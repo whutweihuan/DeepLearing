@@ -48,7 +48,8 @@ x = torch.randn(6,requires_grad=True)
 grades = torch.FloatTensor([1,2,3,4,5,6])
 y = torch.mean(x**2)
 y.backward()
-print(x)
-print(x.data)
-print(x.grad)
+# print(x)
+# print(x.data)
+# print(x.grad)
+
 

@@ -24,7 +24,12 @@ im = np.array(im, dtype = 'float32')
 # pytorch tensor
 im = torch.from_numpy(im.reshape((1, 1, im.shape[0], im.shape[1])))
 
-# 定义一个算子对其进行轮廓检测
+'''
+输入通道: 1
+输出通道: 1
+卷积核大小: 3x3
+不偏置
+'''
 conv1 = nn.Conv2d(1, 1, 3, bias = False)
 
 # 轮廓检测算子

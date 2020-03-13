@@ -133,5 +133,5 @@ dmypy.json
 .pyre/
 
 .gitignore
-main.py
-main2.py
+main01.py
+main02.py

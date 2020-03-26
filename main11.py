@@ -4,6 +4,7 @@
  date: 2020/3/24  18:53
 """
 # 简单的神经网络，预测异或,读取模型
+# 读取模型需要加入模型的定义，否则无法读取
 import numpy as np
 import torch
 import torch.nn as nn

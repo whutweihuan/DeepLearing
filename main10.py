@@ -17,7 +17,7 @@ INPUT = 2
 OUTPUT = 1
 HIDDEN = 20
 BATCH_SIZE = 20
-N_STEP = 1000
+N_STEP = 100000
 CUDA_OK = False
 
 x = torch.randint(0,2,(N_SAMPLE,INPUT)).cuda() if CUDA_OK else torch.randint(0,2,(N_SAMPLE,INPUT))
@@ -68,9 +68,9 @@ def train():
 
         # update model parameters
         optimizer.step()
-# train()
-# torch.save(model,'xor.pkl')
-model = torch.load('xor.pkl')
+train()
+torch.save(model,'xor.pkl')
+# model = torch.load('xor.pkl')
 
 x = torch.FloatTensor([[1,0],[1,1],[0,0],[0,1]])
 with torch.no_grad():

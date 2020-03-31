@@ -312,7 +312,7 @@ loss_fn = torch.nn.NLLLoss()
 encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr=0.01)
 decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr=0.01)
 
-N_EPOCH = 10
+N_EPOCH = 1
 
 
 if __name__ == '__main__':
@@ -355,12 +355,12 @@ if __name__ == '__main__':
                 decoder_optimizer.zero_grad()
                 encoder_optimizer.step()
                 decoder_optimizer.step()
-            losslist.append(loss.item())
+                losslist.append(loss.item())
             print("epoch: {} progress: {} loss: {:.6}".format(epoch,iter, loss.item()))
 
         # print(y.shape)
         # print(y[:,0])
-    plt.plot([i for i in range(N_EPOCH)],losslist)
+    plt.plot(losslist)
     plt.show()
 
         # input('pause')

@@ -135,3 +135,5 @@ dmypy.json
 .gitignore
 main01.py
 main02.py
+/CIFAR10/
+/CIFAR10/

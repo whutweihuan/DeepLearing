@@ -133,7 +133,7 @@ dmypy.json
 .pyre/
 
 .gitignore
-main01.py
-main02.py
 /CIFAR10/
-/CIFAR10/
+CIFAR10
+mnist
+*.pkl

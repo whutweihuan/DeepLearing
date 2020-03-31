@@ -355,7 +355,7 @@ if __name__ == '__main__':
                 decoder_optimizer.zero_grad()
                 encoder_optimizer.step()
                 decoder_optimizer.step()
-                losslist.append(loss.item())
+            losslist.append(loss.item())
             print("epoch: {} progress: {} loss: {:.6}".format(epoch,iter, loss.item()))
 
         # print(y.shape)

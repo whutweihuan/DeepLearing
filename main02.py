@@ -408,16 +408,16 @@ output_words, attentions = evaluate(
 plt.matshow(attentions.numpy())
 
 
-def showAttention(input_sentence, output_words, attentions):
+def showAttention (input_sentence, output_words, attentions):
     # Set up figure with colorbar
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    cax = ax.matshow(attentions.numpy(), cmap='bone')
+    cax = ax.matshow(attentions.numpy(), cmap = 'bone')
     fig.colorbar(cax)
 
     # Set up axes
     ax.set_xticklabels([''] + input_sentence.split(' ') +
-                       ['<EOS>'], rotation=90)
+                       ['<EOS>'], rotation = 90)
     ax.set_yticklabels([''] + output_words)
 
     # Show label at every tick
@@ -427,7 +427,7 @@ def showAttention(input_sentence, output_words, attentions):
     plt.show()
 
 
-def evaluateAndShowAttention(input_sentence):
+def evaluateAndShowAttention (input_sentence):
     output_words, attentions = evaluate(
         encoder1, attn_decoder1, input_sentence)
     print('input =', input_sentence)

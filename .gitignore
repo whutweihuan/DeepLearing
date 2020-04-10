@@ -4,4 +4,4 @@ CIFAR10
 mnist
 *.pkl
 .idea
-myvenv
+../myvenv

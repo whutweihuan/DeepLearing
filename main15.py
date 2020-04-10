@@ -26,13 +26,13 @@ with open(DATAPATH + "\\ascii\\lines.txt") as f:
         else:
             break;
 label = [item.lower() for sub in label for item in sub]
-cnt = Counter(label).most_common(5000)
+cnt = Counter(label).most_common(12000)
 # print(cnt)
 # print(len(cnt))
 # token =[',','.','*','?','!','"',"'",':',';','-','0','1','2','3','4','5','6','7','8','9']
 pattern = re.compile(r".*?[\d,#\"'\(\):;\?\!\.\-]+.*?")
 
-all_words = [item[0] for item in cnt if pattern.match(item[0]) == None]
+all_words = [item[0] for item in cnt ]
 
 # print(len(cnt))
 print(all_words)

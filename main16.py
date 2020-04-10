@@ -16,7 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 
-def read_img (img_path, desired_size = (128, 1024)):
+def read_img (img_path, desired_size = (32, 512)):
     img = cv2.imread(img_path, 0)
     img_resize, crop_cc = resize_image(img, desired_size)
     img_resize = Image.fromarray(img_resize)
@@ -24,7 +24,7 @@ def read_img (img_path, desired_size = (128, 1024)):
     return img_resize
 
 
-def resize_image (image, desired_size = (128, 1024)):
+def resize_image (image, desired_size ):
     ''' Helper function to resize an image while keeping the aspect ratio.
     Parameter
     ---------

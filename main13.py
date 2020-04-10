@@ -25,8 +25,12 @@ BLK = '<BLK>'
 UNK = '<UNK>'
 
 MAX_LENGTH = 20
-BATCH = 4
+BATCH = 64
 TEACH_FORCING_PROB = 1
+N_EPOCH = 20
+LEARNING_RATE = 1e-5
+IMG_WIDTH = 32
+IMG_HEIGHT = 512
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -40,6 +44,7 @@ class Lang():
         self.w2d[EOS] = 1
         self.w2d[BLK] = 2
         self.w2d[UNK] = 3
+        self.lab2v = {}
         for i, word in enumerate(self.words):
             self.w2d[word] = i + 4
         self.d2w = {value: key for key, value in self.w2d.items()}
@@ -54,6 +59,8 @@ class Lang():
         return self.d2w[i]
 
     def label2vec (self, label, lens):
+        # if label in self.lab2v:
+        #     return torch.tensor(self.lab2v[label])
         word_list = label.split('|')
         vec = []
         vec.append(self.word2index(SOS))
@@ -122,7 +129,7 @@ class TrainData(Dataset):
     def __len__ (self):
         return len(self.path)
 
-    def read_img (self, img_path, desired_size = (128, 1024)):
+    def read_img (self, img_path, desired_size = (IMG_WIDTH, IMG_HEIGHT)):
         img = cv2.imread(img_path, 0)
         img_resize, crop_cc = self.resize_image(img, desired_size)
         img_resize = Image.fromarray(img_resize)  # 得到 PIL 图片
@@ -130,7 +137,7 @@ class TrainData(Dataset):
         # return img_tensor
         return img_resize
 
-    def resize_image (self, image, desired_size = (128, 1024)):
+    def resize_image (self, image, desired_size):
         ''' Helper function to resize an image while keeping the aspect ratio.
         Parameter
         ---------
@@ -205,15 +212,24 @@ class Encoder(nn.Module):
     def __init__ (self, imgH, nc, nh):
         super(Encoder, self).__init__()
         assert imgH % 16 == 0, 'imgH has to be a multiple of 16'
+        # self.cnn = nn.Sequential(
+        # nn.Conv2d(nc, 64, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 64x64x512
+        # nn.Conv2d(64, 128, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 128x32x256
+        # nn.Conv2d(128, 256, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 256x16x128
+        # nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(True),
+        # nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 1), padding = (0, 1)),  # 256x8x129
+        # nn.Conv2d(256, 512, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d((2, 2), (2, 1), (0, 1)),  # 512x4x130
+        # nn.Conv2d(512, 512, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d((2, 2), (2, 1), (0, 1)),  # 512x2x131
+        # nn.Conv2d(512, 512, 2, 1, 0), nn.BatchNorm2d(512), nn.ReLU(True))  # 512x1x130
         self.cnn = nn.Sequential(
-            nn.Conv2d(nc, 64, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 64x64x512
-            nn.Conv2d(64, 128, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 128x32x256
-            nn.Conv2d(128, 256, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 256x16x128
-            nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(True),
-            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 1), padding = (0, 1)),  # 256x8x129
-            nn.Conv2d(256, 512, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d((2, 2), (2, 1), (0, 1)),  # 512x4x130
-            nn.Conv2d(512, 512, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d((2, 2), (2, 1), (0, 1)),  # 512x2x131
-            nn.Conv2d(512, 512, 2, 1, 0), nn.BatchNorm2d(512), nn.ReLU(True))  # 512x1x130
+            nn.Conv2d(nc, 64, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 64x16x50   W/2
+            nn.Conv2d(64, 128, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 128x8x25  W/4
+            nn.Conv2d(128, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU(True),  # 256x8x25
+            nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d((2, 2), (2, 1), (0, 1)),  # 256x4x25  W/4 + 1
+            nn.Conv2d(256, 512, 3, 1, 1), nn.BatchNorm2d(512), nn.ReLU(True),  # 512x4x25
+            nn.Conv2d(512, 512, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d((2, 2), (2, 1), (0, 1)),  # 512x2x25  W/4 + 2
+            nn.Conv2d(512, 512, 2, 1, 0), nn.BatchNorm2d(512), nn.ReLU(True))  # 512x1x25   W/4 + 1
+
         self.rnn = nn.Sequential(
             BidirectionalLSTM(512, nh, nh),
             BidirectionalLSTM(nh, nh, nh))
@@ -238,7 +254,7 @@ class Decoder(nn.Module):
         decoder from image features
     '''
 
-    def __init__ (self, nh = 256, nclass = 13, dropout_p = 0.1, max_length = 130):
+    def __init__ (self, nh = 256, nclass = 13, dropout_p = 0.1, max_length = IMG_WIDTH / 4 + 1):
         super(Decoder, self).__init__()
         self.hidden_size = nh
         self.decoder = Attentiondecoder(nh, nclass, dropout_p, max_length)
@@ -256,7 +272,7 @@ class Attentiondecoder(nn.Module):
         采用attention注意力机制，进行解码
     """
 
-    def __init__ (self, hidden_size, output_size, dropout_p = 0.1, max_length = 130):
+    def __init__ (self, hidden_size, output_size, dropout_p = 0.1, max_length = IMG_WIDTH / 4 + 1):
         super(Attentiondecoder, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -410,28 +426,19 @@ def get_transform (phase = "train"):
 encoder = Encoder(128, 1, 256).to(device)
 decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
 loss_fn = torch.nn.NLLLoss().to(device)
-encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr = 0.01)
-decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr = 0.01)
+# loss_fn = torch.nn.nll_loss().to(device)
+encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
+decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
+td = TrainData(transform = get_transform('train'))
 
-N_EPOCH = 1
 
-if __name__ == '__main__':
-    td = TrainData(transform = get_transform('train'))
-
-    # print(td.getFirst().show())
-    # print(Image.fromarray(td.getFirst().squeeze(0).numpy()).show())
-    # print([label2vec(w) for w in td.label[:5]])
-    # print([w for w in td.label[:10]])
+def train():
     dataloader = DataLoader(td, batch_size = BATCH, shuffle = False)
-    # print(td.da)
-
-    # print(word_lang.size())
-    # dl = len(dataloader)
-    # # print(word_lang.size())
-    # # input('---------')
     encoder.train()
     decoder.train()
     losslist = []
+    cnt = 0
+    total_loss = 0.0
     for epoch in range(N_EPOCH):
         for iter, (x, y) in enumerate(dataloader):
             # print(x.size())
@@ -441,7 +448,7 @@ if __name__ == '__main__':
             x, y = x.to(device), y.to(device)
             decoder_hidden = decoder.initHidden(y.shape[0]).to(device)
             loss = 0.0
-            encoder_output = encoder(x).to(device)  # 卷积提取图片特征，130x4x256
+            encoder_output = encoder(x).to(device)  # 卷积提取图片特征，W/4+1 x Batch x hidden
 
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
@@ -460,33 +467,93 @@ if __name__ == '__main__':
                                                                        decoder_hidden.to(device), \
                                                                        decoder_attention.to(device)
                     loss += loss_fn(decode_output, y[:, di].to(device))
+
                     # print(decode_output.size())
                     decoder_input = y[:, di]
                     # loss.backward()
                     # input('-------------')
 
             else:
-                if teach_forcing:
-                    for di in range(y.shape[1]):  # 每次预测一个字符
+                for di in range(y.shape[1]):  # 每次预测一个字符
 
-                        decode_output, decoder_hidden, decoder_attention = decoder(
-                            decoder_input, decoder_hidden, encoder_output)
-                        decode_output, decoder_hidden, decoder_attention = decode_output.to(device), \
-                                                                           decoder_hidden.to(device), \
-                                                                           decoder_attention.to(device)
-                        # print(decode_output.size())
-                        loss += loss_fn(decode_output, y[:, di].to(device))
-                        topv, topi = decode_output.data.topk(1)
-                        ni = topi.squeeze()
-                        decoder_input = ni
+                    decode_output, decoder_hidden, decoder_attention = decoder(
+                        decoder_input, decoder_hidden, encoder_output)
+                    decode_output, decoder_hidden, decoder_attention = decode_output.to(device), \
+                                                                       decoder_hidden.to(device), \
+                                                                       decoder_attention.to(device)
+                    # print(decode_output.size())
+                    loss += loss_fn(decode_output, y[:, di].to(device))
 
+                    topv, topi = decode_output.data.topk(1)
+                    decoder_input = topi.squeeze()
+            total_loss += loss.item()
             loss.backward()
             encoder_optimizer.step()
             decoder_optimizer.step()
-            losslist.append(loss.item())
-            print("epoch: {} progress: {} loss: {:.6}".format(epoch, iter, loss.item()))
+            cnt = cnt + 1
+            if cnt % 10 == 0:
+                losslist.append(total_loss / 10)
+                print("epoch:{:>6.2f}% progress:{:>6.2f}% loss: {:.6f}".format((epoch + 1) / N_EPOCH * 100,
+                                                                        (iter + 1) / len(dataloader) * 100,
+                                                                        total_loss / 10))
+                total_loss = 0.0
+    torch.save(encoder.state_dict(),'encoder.pt')
+    torch.save(decoder.state_dict(),'decoder.pt')
 
-        # print(y.shape)
-        # print(y[:,0])
-    plt.plot(losslist)
-    plt.show()
+
+def evl():
+    for e, d in zip(encoder.parameters(), decoder.parameters()):
+        e.requires_grad = False
+        d.requires_grad = False
+
+    encoder.eval()
+    decoder.eval()
+
+    test_loader = DataLoader(td, batch_size = 1, shuffle = False)
+
+    for x, y in test_loader:
+        decoded_words = []
+        decoded_label = []
+        target = word_lang.batchlabels2vec(y).to(device)
+        x, target = x.to(device), target.to(device)    # x: BATCH x chanel x W x H, y: BATCH x max len of this batch
+        encoder_output = encoder(x).to(device)  # 卷积提取图片特征，W/4+1 x Batch x hidden
+        # print(encoder_output.shape)
+        # print(target.shape)
+        # input()
+        decoder_input = target[:,0].to(device)  # BATCH
+        decoder_hidden = decoder.initHidden(1).to(device) # 1 X BATCH x hidden
+        # print(decoder_input.shape,decoder_hidden.shape)
+        # input()
+
+
+        for di in range(1, MAX_LENGTH):
+            decoder_output, decoder_hidden, decoder_attention = decoder(
+                decoder_input, decoder_hidden, encoder_output)
+            decoder_output, decoder_hidden, decoder_attention = decoder_output.to(device), \
+                                                               decoder_hidden.to(device), \
+                                                               decoder_attention.to(device)
+
+            # decoder_attentions[di - 1] = decoder_attention.data
+            topv, topi = decoder_output.data.topk(1)
+            ni = topi.squeeze(1)
+            decoder_input = ni
+            idx = ni.item()
+            if idx == word_lang.word2index(EOS):
+                decoded_words.append(EOS)
+                decoded_label.append(idx)
+                break
+            else:
+                decoded_words.append(word_lang.index2word(idx))
+                decoded_label.append(idx)
+        print(' '.join(y[0].split('|')))
+        print(' '.join(decoded_words),'\n\n')
+
+
+if __name__ == '__main__':
+
+    train()
+    evl()
+
+
+
+

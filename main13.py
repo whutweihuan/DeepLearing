@@ -27,10 +27,10 @@ UNK = '<UNK>'
 MAX_LENGTH = 20
 BATCH = 64
 TEACH_FORCING_PROB = 0.2
-N_EPOCH = 2
-LEARNING_RATE = 1e-5
+N_EPOCH = 10
+LEARNING_RATE = 1e-4
 IMG_WIDTH = 32
-IMG_HEIGHT = 512
+IMG_HEIGHT = 128
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -433,6 +433,18 @@ loss_fn = torch.nn.NLLLoss().to(device)
 # loss_fn = torch.nn.nll_loss().to(device)
 encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
 decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
+
+# class torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10,
+#  verbose=False, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08)
+# optimer指的是网络的优化器
+# mode (str) ，可选择‘min’或者‘max’，min表示当监控量停止下降的时候，学习率将减小，max表示当监控量停止上升的时候，学习率将减小。默认值为‘min’
+# factor 学习率每次降低多少，new_lr = old_lr * factor
+# patience=10，容忍网路的性能不提升的次数，高于这个次数就降低学习率
+# verbose（bool） - 如果为True，则为每次更新向stdout输出一条消息。 默认值：False
+# threshold（float） - 测量新最佳值的阈值，仅关注重大变化。 默认值：1e-4
+# cooldown： 减少lr后恢复正常操作之前要等待的时期数。 默认值：0。
+# min_lr,学习率的下限
+decoder_scheduler = nn.ReduceLROnPlateau(decoder_optimizer, 'min',factor=0.5, patience=4, verbose=True)
 td = TrainData(transform = get_transform('train33'))
 
 
@@ -445,10 +457,11 @@ def train ():
     total_loss = 0.0
     for epoch in range(N_EPOCH):
         for iter, (x, y) in enumerate(dataloader):
-            # print(x.size())
+            # print(y)
             # print(word_lang.batchlabels2vec(y))
             # input('-----------')
             y = word_lang.batchlabels2vec(y)
+
             x, y = x.to(device), y.to(device)
             decoder_hidden = decoder.initHidden(y.shape[0]).to(device)
             loss = 0.0

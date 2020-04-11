@@ -94,40 +94,36 @@ def text_standardize(text):
 
 DATAPATH = "C:\\Users\\weihuan\\Desktop\\IAM"
 
-
-with open(DATAPATH + "\\ascii\\lines.txt") as f:
-    text = f.read()
-    text = text_standardize(text)
-    # print(text)
-
-
+def standard_mytext():
+    with open(DATAPATH + "\\ascii\\lines.txt") as f:
+        text = f.read()
+        text = text_standardize(text)
+        print(text)
 
 
-# 首先处理数据,解析的是文本，统计词的个数，构建词典
 
-label = []
-# with open(DATAPATH + "\\ascii\\lines.txt") as f:
-with open("mydata\\en0.txt") as f:
-    for i in range(23):
-        f.readline()
-    while True:
-        line = f.readline()
-        if line:
-            line = line.split(' ')
+def write_dic():
+    # 首先处理数据,解析的是文本，统计词的个数，构建词典
 
-            label.append(line[8].strip('\n').split('|'))
-        else:
-            break;
-label = [item.lower() for sub in label for item in sub]
-cnt = Counter(label).most_common(12000)
-# print(cnt)
-# print(len(cnt))
-# token =[',','.','*','?','!','"',"'",':',';','-','0','1','2','3','4','5','6','7','8','9']
-pattern = re.compile(r".*?[\d,#\"'\(\):;\?\!\.\-]+.*?")
+    label = []
+    # with open(DATAPATH + "\\ascii\\lines.txt") as f:
+    with open("mydata\\en0.txt") as f:
+        for i in range(23):
+            f.readline()
+        while True:
+            line = f.readline()
+            if line:
+                line = line.split(' ')
 
-all_words = [item[0] for item in cnt ]
+                label.append(line[8].strip('\n').split('|'))
+            else:
+                break;
+    label = [item.lower() for sub in label for item in sub]
+    cnt = Counter(label).most_common(12000)
 
-# print(len(cnt))
-# print(all_words)
-# print(len(all_words))
-np.savetxt('.\mydata\en1.txt',np.array(all_words),fmt="%s")
+    pattern = re.compile(r".*?[\d,#\"'\(\):;\?\!\.\-]+.*?")
+    all_words = [item[0] for item in cnt ]
+    np.savetxt('.\mydata\en1.txt',np.array(all_words),fmt="%s")
+
+if __name__ == '__main__':
+    pass

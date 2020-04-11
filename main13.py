@@ -25,12 +25,12 @@ BLK = '<BLK>'
 UNK = '<UNK>'
 
 MAX_LENGTH = 20
-BATCH = 64
-TEACH_FORCING_PROB = 0.2
+BATCH = 32
+TEACH_FORCING_PROB = 0.99
 N_EPOCH = 10
-LEARNING_RATE = 1e-4
-IMG_WIDTH = 32
-IMG_HEIGHT = 128
+LEARNING_RATE = 0.0001
+IMG_WIDTH = 1024
+IMG_HEIGHT = 32
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -85,9 +85,7 @@ class Lang():
             bl[i, :] = self.label2vec(blabels[i], lens)
         return bl
 
-
 word_lang = Lang()
-
 
 class TrainData(Dataset):
     def __init__ (self, transform = None, target_transform = None):
@@ -129,7 +127,7 @@ class TrainData(Dataset):
     def __len__ (self):
         return len(self.path)
 
-    def read_img (self, img_path, desired_size = (IMG_WIDTH, IMG_HEIGHT)):
+    def read_img (self, img_path, desired_size = (IMG_HEIGHT,IMG_WIDTH)):
         img = cv2.imread(img_path, 0)
         img_resize, crop_cc = self.resize_image(img, desired_size)
         img_resize = Image.fromarray(img_resize)  # 得到 PIL 图片
@@ -188,6 +186,7 @@ class TrainData(Dataset):
 class BidirectionalLSTM(nn.Module):
     def __init__ (self, nIn, nHidden, nOut):
         super(BidirectionalLSTM, self).__init__()
+        # (input_size,hidden_size,num_layers)
         self.rnn = nn.LSTM(nIn, nHidden, bidirectional = True)
         self.embedding = nn.Linear(nHidden * 2, nOut)
 
@@ -238,11 +237,11 @@ class Encoder(nn.Module):
         # conv features
         conv = self.cnn(input)
         b, c, h, w = conv.size()
-        # print(b,c,h,w)
+        # print(batch,channel,hight,width)
         # input('-----------2-----------')
         assert h == 1, "the height of conv must be 1"
         conv = conv.squeeze(2)
-        conv = conv.permute(2, 0, 1)  # [w, b, c]
+        conv = conv.permute(2, 0, 1)  # [width, batch, channel]  ==> [WIDTH / 4 + 1, batch, 512]
         # rnn features calculate
         encoder_outputs = self.rnn(conv)  # seq * batch * n_classes// 25 × batchsize × 256（隐藏节点个数）
 
@@ -254,7 +253,7 @@ class Decoder(nn.Module):
         decoder from image features
     '''
 
-    def __init__ (self, nh = 256, nclass = 13, dropout_p = 0.1, max_length = IMG_WIDTH / 4 + 1):
+    def __init__ (self, nh = 256, nclass = word_lang.size(), dropout_p = 0.1, max_length = IMG_WIDTH / 4 + 1):
         super(Decoder, self).__init__()
         self.hidden_size = nh
         self.decoder = Attentiondecoder(nh, nclass, dropout_p, max_length)
@@ -312,11 +311,40 @@ class Attentiondecoder(nn.Module):
         return result
 
 
+class DecoderRNN(nn.Module):
+    """
+        采用RNN进行解码
+    """
+    def __init__(self, hidden_size, output_size):
+        super(DecoderRNN, self).__init__()
+        self.hidden_size = hidden_size
+
+        self.embedding = nn.Embedding(output_size, hidden_size)
+        self.gru = nn.GRU(hidden_size, hidden_size)
+        self.out = nn.Linear(hidden_size, output_size)
+        self.softmax = nn.LogSoftmax(dim=1)
+
+    def forward(self, input, hidden):
+        output = self.embedding(input).view(1, 1, -1)
+        output = F.relu(output)
+        output, hidden = self.gru(output, hidden)
+        output = self.softmax(self.out(output[0]))
+        return output, hidden
+
+    def initHidden(self):
+        result = Variable(torch.zeros(1, 1, self.hidden_size))
+
+        return result
+
+
 class AttentiondecoderV2(nn.Module):
     """
         采用seq to seq模型，修改注意力权重的计算方式
     """
-
+    """
+        hidden_size 是隐藏向量的大小，是一个超参数
+        output_size 是字典的大小，用于进行词嵌入      
+    """
     def __init__ (self, hidden_size, output_size, dropout_p = 0.1):
         super(AttentiondecoderV2, self).__init__()
         self.hidden_size = hidden_size
@@ -333,13 +361,18 @@ class AttentiondecoderV2(nn.Module):
 
         # test
         self.vat = nn.Linear(hidden_size, 1)
-
+    """
+        input 是指上一次 decoder 的输出, 是一个 batch 维的向量，每个数字代表词的在字典的位置
+        hidden 是指隐藏层的大小
+        encoder_output 是指 encoder 输出的上下文向量，是对图片编码的结果
+    """
     def forward (self, input, hidden, encoder_outputs):
         embedded = self.embedding(input)  # 前一次的输出进行词嵌入
         embedded = self.dropout(embedded)
 
         # test
         batch_size = encoder_outputs.shape[1]
+        # alpha = hidden + encoder_outputs  # 特征融合采用+/concat其实都可以
         alpha = hidden + encoder_outputs  # 特征融合采用+/concat其实都可以
         alpha = alpha.view(-1, alpha.shape[-1])
         attn_weights = self.vat(torch.tanh(alpha))  # 将encoder_output:batch*seq*features,将features的维度降为1
@@ -373,7 +406,7 @@ class decoderV2(nn.Module):
         decoder from image features
     '''
 
-    def __init__ (self, nh = 256, nclass = 13, dropout_p = 0.1):
+    def __init__ (self, nh = 256, nclass = word_lang.size(), dropout_p = 0.1):
         super(decoderV2, self).__init__()
         self.hidden_size = nh
         self.decoder = AttentiondecoderV2(nh, nclass, dropout_p)
@@ -384,10 +417,6 @@ class decoderV2(nn.Module):
     def initHidden (self, batch_size):
         result = Variable(torch.zeros(1, batch_size, self.hidden_size))
         return result
-
-
-# print(words.d2w)
-# print(len(word_lang.w2d))
 
 def get_transform (phase = "train"):
     transfrom_PIL_list = [
@@ -419,20 +448,16 @@ def get_transform (phase = "train"):
     return transform
 
 
-# def read_img(img, inference_transform,desired_size=(128, 1024)):
-#     img_resize, crop_cc = resize_image(img, desired_size)
-#     img_resize = Image.fromarray(img_resize)
-#     img_tensor = inference_transform(img_resize)
-#     return img_tensor
-
-
 # print(label2vec('#'))
-encoder = Encoder(128, 1, 256).to(device)
+encoder = Encoder(IMG_HEIGHT, 1, 256).to(device)
+# decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
 decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
 loss_fn = torch.nn.NLLLoss().to(device)
 # loss_fn = torch.nn.nll_loss().to(device)
-encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
-decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
+encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr = LEARNING_RATE)
+decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr = LEARNING_RATE)
+# encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
+# decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
 
 # class torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10,
 #  verbose=False, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08)
@@ -444,18 +469,29 @@ decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
 # threshold（float） - 测量新最佳值的阈值，仅关注重大变化。 默认值：1e-4
 # cooldown： 减少lr后恢复正常操作之前要等待的时期数。 默认值：0。
 # min_lr,学习率的下限
-decoder_scheduler = nn.ReduceLROnPlateau(decoder_optimizer, 'min',factor=0.5, patience=4, verbose=True)
+decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, 'min',factor=0.8, patience=5, verbose=False)
+encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min',factor=0.8, patience=5, verbose=False)
 td = TrainData(transform = get_transform('train33'))
 
 
 def train ():
     dataloader = DataLoader(td, batch_size = BATCH, shuffle = False)
+    encoder.load_state_dict(torch.load('./encoder.pt'))
+    decoder.load_state_dict(torch.load('./decoder.pt'))
+
+    for e, d in zip(encoder.parameters(), decoder.parameters()):
+        e.requires_grad = True
+        d.requires_grad = True
+
     encoder.train()
     decoder.train()
+
+
     losslist = []
     cnt = 0
     total_loss = 0.0
-    for epoch in range(N_EPOCH):
+    # for epoch in range(N_EPOCH):
+    for epoch in range(1):
         for iter, (x, y) in enumerate(dataloader):
             # print(y)
             # print(word_lang.batchlabels2vec(y))
@@ -509,14 +545,16 @@ def train ():
                     decoder_input = topi.squeeze(1)
                     # print(decoder_input)
             total_loss += loss.item()
-            encoder.zero_grad()
-            decoder.zero_grad()
+            encoder_optimizer.zero_grad()
+            decoder_optimizer.zero_grad()
             loss.backward()
             encoder_optimizer.step()
             decoder_optimizer.step()
             cnt = cnt + 1
             if cnt % 10 == 0:
                 losslist.append(total_loss / 10)
+                decoder_scheduler.step(total_loss / 10)
+                encoder_scheduler.step(total_loss / 10)
                 print("epoch:{:>6.2f}% progress:{:>6.2f}% loss: {:.6f}".format((epoch + 1) / N_EPOCH * 100,
                                                                                (iter + 1) / len(dataloader) * 100,
                                                                                total_loss / 10))
@@ -538,10 +576,10 @@ def evl ():
     encoder.eval()
     decoder.eval()
 
-    test_loader = DataLoader(td, batch_size = 1, shuffle = False)
+    test_loader = DataLoader(td, batch_size = 1, shuffle = True)
 
     for batch_iter ,(x, y) in enumerate(test_loader):
-        if batch_iter == 1000:
+        if batch_iter == 100:
             break
 
         decoded_words = []
@@ -582,11 +620,9 @@ def evl ():
 
 
 if __name__ == '__main__':
-    train()
-    evl()
-    # test_loader = DataLoader(td, batch_size = 1, shuffle = False)
+    for i in range(N_EPOCH):
+        train()
+        evl()
 
-    # for x,y in test_loader:
-    #     print()
 
 

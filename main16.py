@@ -16,7 +16,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 
-def read_img (img_path, desired_size = (32, 512)):
+H = 32
+W = 1024
+N_IMAGE = 2
+
+def read_img (img_path, desired_size = (H, W)):
     img = cv2.imread(img_path, 0)
     img_resize, crop_cc = resize_image(img, desired_size)
     img_resize = Image.fromarray(img_resize)
@@ -64,7 +68,7 @@ def resize_image (image, desired_size ):
     image[image > 230] = 255
     return image, crop_bb
 
-for i in range(4):
+for i in range(N_IMAGE):
 
     path = 'mydata/a01-000u-0'+ str(i) +'.png'
     img = read_img(path)

@@ -4,3 +4,4 @@ CIFAR10
 mnist
 *.pkl
 .idea
+*.pt

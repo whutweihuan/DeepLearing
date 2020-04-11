@@ -26,8 +26,8 @@ UNK = '<UNK>'
 
 MAX_LENGTH = 20
 BATCH = 64
-TEACH_FORCING_PROB = 1
-N_EPOCH = 20
+TEACH_FORCING_PROB = 0.2
+N_EPOCH = 2
 LEARNING_RATE = 1e-5
 IMG_WIDTH = 32
 IMG_HEIGHT = 512
@@ -37,7 +37,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class Lang():
     def __init__ (self):
-        self.words = np.loadtxt('./mydata/en.txt', dtype = np.str)
+        self.words = np.loadtxt('./mydata/en1.txt', dtype = np.str)
         self.w2d = {}
         # self.d2w = {}
         self.w2d[SOS] = 0
@@ -64,10 +64,9 @@ class Lang():
         word_list = label.split('|')
         vec = []
         vec.append(self.word2index(SOS))
-        v = [word_lang.word2index(w) for w in word_list]
         vec.extend(self.word2index(w) for w in word_list)
         vec.append(self.word2index(EOS))
-        if len(vec) < lens:
+        if len(vec) < lens:  # 填充空格，对齐操作
             vec.extend([self.word2index(BLK)] * (lens - len(vec)))
 
         return torch.tensor(vec)
@@ -98,7 +97,8 @@ class TrainData(Dataset):
         self.target_transform = target_transform
 
         # 首先处理数据,解析的是文本，统计词的个数，构建词典
-        with open(DATAPATH + "\\ascii\\lines.txt") as f:
+        # with open(DATAPATH + "\\ascii\\lines.txt") as f:
+        with open("mydata\\en0.txt") as f:
             for i in range(23):
                 f.readline()
             while True:
@@ -323,6 +323,8 @@ class AttentiondecoderV2(nn.Module):
         self.output_size = output_size
         self.dropout_p = dropout_p
 
+        # embedding, 输入词典单词个数，以及维度
+        # 输出 Output: (*, embedding_dim), where * is the input shape
         self.embedding = nn.Embedding(self.output_size, self.hidden_size)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)
@@ -349,6 +351,8 @@ class AttentiondecoderV2(nn.Module):
 
         attn_applied = torch.matmul(attn_weights,
                                     encoder_outputs.permute((1, 0, 2)))  # 矩阵乘法，bmm（8×1×56，8×56×256）=8×1×256
+
+        # 向量合并
         output = torch.cat((embedded, attn_applied.squeeze(1)), 1)  # 上一次的输出和attention feature，做一个线性+GRU
         output = self.attn_combine(output).unsqueeze(0)
 
@@ -429,10 +433,10 @@ loss_fn = torch.nn.NLLLoss().to(device)
 # loss_fn = torch.nn.nll_loss().to(device)
 encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
 decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
-td = TrainData(transform = get_transform('train'))
+td = TrainData(transform = get_transform('train33'))
 
 
-def train():
+def train ():
     dataloader = DataLoader(td, batch_size = BATCH, shuffle = False)
     encoder.train()
     decoder.train()
@@ -450,8 +454,8 @@ def train():
             loss = 0.0
             encoder_output = encoder(x).to(device)  # 卷积提取图片特征，W/4+1 x Batch x hidden
 
-            encoder_optimizer.zero_grad()
-            decoder_optimizer.zero_grad()
+            # encoder_optimizer.zero_grad()
+            # decoder_optimizer.zero_grad()
 
             # print(encoder_output.size())
             # input('--------------')
@@ -459,7 +463,10 @@ def train():
             decoder_input = y[:, 0].to(device)
             teach_forcing = True if random.random() < TEACH_FORCING_PROB else False
             if teach_forcing:
-                for di in range(y.shape[1]):  # 每次预测一个字符
+                for di in range(1,y.shape[1]):  # 每次预测一个字符
+
+                    # print(y)
+                    # input()
 
                     decode_output, decoder_hidden, decoder_attention = decoder(
                         decoder_input, decoder_hidden, encoder_output)
@@ -474,10 +481,11 @@ def train():
                     # input('-------------')
 
             else:
-                for di in range(y.shape[1]):  # 每次预测一个字符
+                for di in range(1,y.shape[1]):  # 每次预测一个字符
 
                     decode_output, decoder_hidden, decoder_attention = decoder(
                         decoder_input, decoder_hidden, encoder_output)
+
                     decode_output, decoder_hidden, decoder_attention = decode_output.to(device), \
                                                                        decoder_hidden.to(device), \
                                                                        decoder_attention.to(device)
@@ -485,8 +493,11 @@ def train():
                     loss += loss_fn(decode_output, y[:, di].to(device))
 
                     topv, topi = decode_output.data.topk(1)
-                    decoder_input = topi.squeeze()
+                    decoder_input = topi.squeeze(1)
+                    # print(decoder_input)
             total_loss += loss.item()
+            encoder.zero_grad()
+            decoder.zero_grad()
             loss.backward()
             encoder_optimizer.step()
             decoder_optimizer.step()
@@ -494,14 +505,19 @@ def train():
             if cnt % 10 == 0:
                 losslist.append(total_loss / 10)
                 print("epoch:{:>6.2f}% progress:{:>6.2f}% loss: {:.6f}".format((epoch + 1) / N_EPOCH * 100,
-                                                                        (iter + 1) / len(dataloader) * 100,
-                                                                        total_loss / 10))
+                                                                               (iter + 1) / len(dataloader) * 100,
+                                                                               total_loss / 10))
                 total_loss = 0.0
-    torch.save(encoder.state_dict(),'encoder.pt')
-    torch.save(decoder.state_dict(),'decoder.pt')
+    torch.save(encoder.state_dict(), 'encoder.pt')
+    torch.save(decoder.state_dict(), 'decoder.pt')
 
 
-def evl():
+# 对模型进行测试
+def evl ():
+
+    encoder.load_state_dict(torch.load('./encoder.pt'))
+    decoder.load_state_dict(torch.load('./decoder.pt'))
+
     for e, d in zip(encoder.parameters(), decoder.parameters()):
         e.requires_grad = False
         d.requires_grad = False
@@ -511,49 +527,53 @@ def evl():
 
     test_loader = DataLoader(td, batch_size = 1, shuffle = False)
 
-    for x, y in test_loader:
+    for batch_iter ,(x, y) in enumerate(test_loader):
+        if batch_iter == 1000:
+            break
+
         decoded_words = []
         decoded_label = []
         target = word_lang.batchlabels2vec(y).to(device)
-        x, target = x.to(device), target.to(device)    # x: BATCH x chanel x W x H, y: BATCH x max len of this batch
+        x, target = x.to(device), target.to(device)  # x: BATCH x chanel x W x H, y: BATCH x max len of this batch
         encoder_output = encoder(x).to(device)  # 卷积提取图片特征，W/4+1 x Batch x hidden
         # print(encoder_output.shape)
         # print(target.shape)
         # input()
-        decoder_input = target[:,0].to(device)  # BATCH
-        decoder_hidden = decoder.initHidden(1).to(device) # 1 X BATCH x hidden
+        decoder_input = target[:, 0].to(device)  # BATCH
+        decoder_hidden = decoder.initHidden(1).to(device)  # 1 X BATCH x hidden
         # print(decoder_input.shape,decoder_hidden.shape)
         # input()
 
-
-        for di in range(1, MAX_LENGTH):
+        # for di in range(1, MAX_LENGTH):
+        for di in range(1,len(y[0].split('|'))):
             decoder_output, decoder_hidden, decoder_attention = decoder(
                 decoder_input, decoder_hidden, encoder_output)
             decoder_output, decoder_hidden, decoder_attention = decoder_output.to(device), \
-                                                               decoder_hidden.to(device), \
-                                                               decoder_attention.to(device)
+                                                                decoder_hidden.to(device), \
+                                                                decoder_attention.to(device)
 
             # decoder_attentions[di - 1] = decoder_attention.data
             topv, topi = decoder_output.data.topk(1)
             ni = topi.squeeze(1)
             decoder_input = ni
             idx = ni.item()
-            if idx == word_lang.word2index(EOS):
-                decoded_words.append(EOS)
-                decoded_label.append(idx)
-                break
-            else:
-                decoded_words.append(word_lang.index2word(idx))
-                decoded_label.append(idx)
+            # if idx == word_lang.word2index(EOS) and False:
+            #     decoded_words.append(EOS)
+            #     decoded_label.append(idx)
+            #     break
+            # else:
+            decoded_words.append(word_lang.index2word(idx))
+            decoded_label.append(idx)
         print(' '.join(y[0].split('|')))
-        print(' '.join(decoded_words),'\n\n')
+        print(' '.join(decoded_words), '\n\n')
 
 
 if __name__ == '__main__':
-
     train()
     evl()
+    # test_loader = DataLoader(td, batch_size = 1, shuffle = False)
 
-
+    # for x,y in test_loader:
+    #     print()
 
 

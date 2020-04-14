@@ -25,10 +25,10 @@ BLK = '<BLK>'
 UNK = '<UNK>'
 
 MAX_LENGTH = 20
-BATCH = 32
-TEACH_FORCING_PROB = 0.99
+BATCH = 256
+TEACH_FORCING_PROB = 0.5
 N_EPOCH = 10
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.001
 IMG_WIDTH = 128
 IMG_HEIGHT = 32
 
@@ -37,7 +37,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class Lang():
     def __init__ (self):
-        self.words = np.loadtxt('./mydata/char_std_5990.txt', dtype = np.str,encoding = 'utf-8')
+        self.words = np.loadtxt('./mydata/char_std_5990.txt', dtype = np.str, encoding = 'utf-8')
         self.w2d = {}
         # self.d2w = {}
         self.w2d[SOS] = 0
@@ -87,7 +87,9 @@ class Lang():
             bl[i, :] = self.label2vec(blabels[i], lens)
         return bl
 
+
 word_lang = Lang()
+
 
 class TrainData(Dataset):
     def __init__ (self, transform = None, target_transform = None):
@@ -98,12 +100,14 @@ class TrainData(Dataset):
 
         # 首先处理数据,解析的是文本，统计词的个数，构建词典
         # with open(DATAPATH + "\\ascii\\lines.txt") as f:
-        with open("mydata\\ch_train.txt",encoding = 'utf-8') as f:
+        with open("mydata\\ch_train.txt", encoding = 'utf-8') as f:
             lines = f.readlines()
+            self.path = [item.split(' ')[0] for item in lines]
+            self.label = [item.split(' ')[1] for item in lines]
             # self.label = torch.tensor(self.label)
 
     def __getitem__ (self, item):
-        path = DATAPATH + "\\" + self.path[item] + ".png"
+        path = DATAPATH + "\\" + self.path[item]
         # img = Image.open(path).convert('RGB').resize((280, 32), Image.BILINEAR)
         img = self.read_img(path)
         # img.show()
@@ -120,7 +124,7 @@ class TrainData(Dataset):
     def __len__ (self):
         return len(self.path)
 
-    def read_img (self, img_path, desired_size = (IMG_HEIGHT,IMG_WIDTH)):
+    def read_img (self, img_path, desired_size = (IMG_HEIGHT, IMG_WIDTH)):
         img = cv2.imread(img_path, 0)
         img_resize, crop_cc = self.resize_image(img, desired_size)
         img_resize = Image.fromarray(img_resize)  # 得到 PIL 图片
@@ -167,13 +171,6 @@ class TrainData(Dataset):
                    (image.shape[0] - bottom - top) / image.shape[0])
         image[image > 230] = 255
         return image, crop_bb
-
-    def getFirst (self):
-        path = DATAPATH + "\\lines\\lines\\lines_all\\" + self.path[0] + ".png"
-        # img = Image.open(path).convert('RGB').resize((280, 32), Image.BILINEAR)
-        img = self.read_img(path)
-
-        return img
 
 
 class BidirectionalLSTM(nn.Module):
@@ -246,7 +243,7 @@ class Decoder(nn.Module):
         decoder from image features
     '''
 
-    def __init__ (self, nh = 256, nclass = word_lang.size(), dropout_p = 0.1, max_length = IMG_WIDTH / 4 + 1):
+    def __init__ (self, nh = 256, nclass = word_lang.size(), dropout_p = 0.1, max_length = IMG_WIDTH // 4 + 1):
         super(Decoder, self).__init__()
         self.hidden_size = nh
         self.decoder = Attentiondecoder(nh, nclass, dropout_p, max_length)
@@ -264,7 +261,7 @@ class Attentiondecoder(nn.Module):
         采用attention注意力机制，进行解码
     """
 
-    def __init__ (self, hidden_size, output_size, dropout_p = 0.1, max_length = IMG_WIDTH / 4 + 1):
+    def __init__ (self, hidden_size, output_size, dropout_p = 0.1, max_length = IMG_WIDTH // 4 + 1):
         super(Attentiondecoder, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -308,23 +305,24 @@ class DecoderRNN(nn.Module):
     """
         采用RNN进行解码
     """
-    def __init__(self, hidden_size, output_size):
+
+    def __init__ (self, hidden_size, output_size):
         super(DecoderRNN, self).__init__()
         self.hidden_size = hidden_size
 
         self.embedding = nn.Embedding(output_size, hidden_size)
         self.gru = nn.GRU(hidden_size, hidden_size)
         self.out = nn.Linear(hidden_size, output_size)
-        self.softmax = nn.LogSoftmax(dim=1)
+        self.softmax = nn.LogSoftmax(dim = 1)
 
-    def forward(self, input, hidden):
+    def forward (self, input, hidden):
         output = self.embedding(input).view(1, 1, -1)
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
         output = self.softmax(self.out(output[0]))
         return output, hidden
 
-    def initHidden(self):
+    def initHidden (self):
         result = Variable(torch.zeros(1, 1, self.hidden_size))
 
         return result
@@ -338,13 +336,14 @@ class AttentiondecoderV2(nn.Module):
         hidden_size 是隐藏向量的大小，是一个超参数
         output_size 是字典的大小，用于进行词嵌入      
     """
+
     def __init__ (self, hidden_size, output_size, dropout_p = 0.1):
         super(AttentiondecoderV2, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.dropout_p = dropout_p
 
-        # embedding, 输入词典单词个数，以及维度
+        # embedding 初始化输入词典单词个数，以及产生维度
         # 输出 Output: (*, embedding_dim), where * is the input shape
         self.embedding = nn.Embedding(self.output_size, self.hidden_size)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
@@ -354,15 +353,18 @@ class AttentiondecoderV2(nn.Module):
 
         # test
         self.vat = nn.Linear(hidden_size, 1)
+
     """
         input 是指上一次 decoder 的输出, 是一个 batch 维的向量，每个数字代表词的在字典的位置
-        hidden 是指隐藏层的大小
+        hidden 是指隐藏层的大小  1 x batch x hiddensize
         encoder_output 是指 encoder 输出的上下文向量，是对图片编码的结果
     """
+
     def forward (self, input, hidden, encoder_outputs):
         embedded = self.embedding(input)  # 前一次的输出进行词嵌入
-        embedded = self.dropout(embedded)
-
+        embedded = self.dropout(embedded)  # batch x hiddensize  => 4 x 256
+        # print(embedded.shape)
+        # print(hidden.size())
         # test
         batch_size = encoder_outputs.shape[1]
         # alpha = hidden + encoder_outputs  # 特征融合采用+/concat其实都可以
@@ -411,6 +413,7 @@ class decoderV2(nn.Module):
         result = Variable(torch.zeros(1, batch_size, self.hidden_size))
         return result
 
+
 def get_transform (phase = "train"):
     transfrom_PIL_list = [
         transforms.RandomAffine((-2, 2), fillcolor = 255),
@@ -441,14 +444,30 @@ def get_transform (phase = "train"):
     return transform
 
 
+# https://blog.csdn.net/dss_dssssd/article/details/83990511
+def weight_init (m):
+    if isinstance(m, nn.Linear):
+        nn.init.xavier_normal_(m.weight)
+        nn.init.constant_(m.bias, 0)
+    # 也可以判断是否为conv2d，使用相应的初始化方式
+    elif isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, mode = 'fan_out', nonlinearity = 'relu')
+    # 是否为批归一化层
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight, 1)
+        nn.init.constant_(m.bias, 0)
+
+
 # print(label2vec('#'))
 encoder = Encoder(IMG_HEIGHT, 1, 256).to(device)
+encoder.apply(weight_init)
 # decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
-decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
+decoder = Decoder(256, word_lang.size(), dropout_p = 0.1).to(device)
+decoder.apply(weight_init)
 loss_fn = torch.nn.NLLLoss().to(device)
 # loss_fn = torch.nn.nll_loss().to(device)
-encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr = LEARNING_RATE)
-decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr = LEARNING_RATE)
+encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
+decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
 # encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
 # decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
 
@@ -462,15 +481,17 @@ decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr = LEARNING_RATE)
 # threshold（float） - 测量新最佳值的阈值，仅关注重大变化。 默认值：1e-4
 # cooldown： 减少lr后恢复正常操作之前要等待的时期数。 默认值：0。
 # min_lr,学习率的下限
-decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, 'min',factor=0.8, patience=5, verbose=False)
-encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min',factor=0.8, patience=5, verbose=False)
+decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, 'min', factor = 0.8, patience = 3,
+                                                               verbose = False)
+encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min', factor = 0.8, patience = 3,
+                                                               verbose = False)
 td = TrainData(transform = get_transform('train33'))
 
 
 def train ():
     dataloader = DataLoader(td, batch_size = BATCH, shuffle = False)
-    encoder.load_state_dict(torch.load('./encoder.pt'))
-    decoder.load_state_dict(torch.load('./decoder.pt'))
+    # encoder.load_state_dict(torch.load('./encoder01.pt'))
+    # decoder.load_state_dict(torch.load('./decoder01.pt'))
 
     for e, d in zip(encoder.parameters(), decoder.parameters()):
         e.requires_grad = True
@@ -478,7 +499,6 @@ def train ():
 
     encoder.train()
     decoder.train()
-
 
     losslist = []
     cnt = 0
@@ -505,7 +525,7 @@ def train ():
             decoder_input = y[:, 0].to(device)
             teach_forcing = True if random.random() < TEACH_FORCING_PROB else False
             if teach_forcing:
-                for di in range(1,y.shape[1]):  # 每次预测一个字符
+                for di in range(1, y.shape[1]):  # 每次预测一个字符
 
                     # print(y)
                     # input()
@@ -523,7 +543,7 @@ def train ():
                     # input('-------------')
 
             else:
-                for di in range(1,y.shape[1]):  # 每次预测一个字符
+                for di in range(1, y.shape[1]):  # 每次预测一个字符
 
                     decode_output, decoder_hidden, decoder_attention = decoder(
                         decoder_input, decoder_hidden, encoder_output)
@@ -552,15 +572,14 @@ def train ():
                                                                                (iter + 1) / len(dataloader) * 100,
                                                                                total_loss / 10))
                 total_loss = 0.0
-    torch.save(encoder.state_dict(), 'encoder.pt')
-    torch.save(decoder.state_dict(), 'decoder.pt')
+    torch.save(encoder.state_dict(), 'encoder01.pt')
+    torch.save(decoder.state_dict(), 'decoder01.pt')
 
 
 # 对模型进行测试
 def evl ():
-
-    encoder.load_state_dict(torch.load('./encoder.pt'))
-    decoder.load_state_dict(torch.load('./decoder.pt'))
+    encoder.load_state_dict(torch.load('./encoder01.pt'))
+    decoder.load_state_dict(torch.load('./decoder01.pt'))
 
     for e, d in zip(encoder.parameters(), decoder.parameters()):
         e.requires_grad = False
@@ -571,7 +590,7 @@ def evl ():
 
     test_loader = DataLoader(td, batch_size = 1, shuffle = True)
 
-    for batch_iter ,(x, y) in enumerate(test_loader):
+    for batch_iter, (x, y) in enumerate(test_loader):
         if batch_iter == 100:
             break
 
@@ -589,7 +608,7 @@ def evl ():
         # input()
 
         # for di in range(1, MAX_LENGTH):
-        for di in range(1,len(y[0].split('|'))):
+        for di in range(1, len(y[0]) + 1):
             decoder_output, decoder_hidden, decoder_attention = decoder(
                 decoder_input, decoder_hidden, encoder_output)
             decoder_output, decoder_hidden, decoder_attention = decoder_output.to(device), \
@@ -606,21 +625,21 @@ def evl ():
             #     decoded_label.append(idx)
             #     break
             # else:
+            # print(idx)
             decoded_words.append(word_lang.index2word(idx))
             decoded_label.append(idx)
-        print(' '.join(y[0].split('|')))
+        # print(' '.join(y[0].split('|')))
+        print(y[0].strip('\n'))
+        # print('-------------')
         print(' '.join(decoded_words), '\n\n')
 
 
 if __name__ == '__main__':
-    # for i in range(N_EPOCH):
-    #     train()
-    #     evl()
-    # pass
+    for i in range(N_EPOCH):
+        train()
+        evl()
+    pass
 
-    print(word_lang.size())
+    # print(word_lang.size())
 
-    print(word_lang.word2index('国'))
-
-
-
+    # print(word_lang.word2index('国'))

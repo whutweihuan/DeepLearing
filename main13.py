@@ -26,14 +26,14 @@ UNK = '<UNK>'
 
 MAX_LENGTH = 20
 BATCH = 32
-TEACH_FORCING_PROB = 0.99
+TEACH_FORCING_PROB = 0.5
 N_EPOCH = 10
 LEARNING_RATE = 0.0001
-IMG_WIDTH = 1024
+IMG_WIDTH = 512
 IMG_HEIGHT = 32
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+# device = torch.device('cpu')
 
 class Lang():
     def __init__ (self):
@@ -230,6 +230,9 @@ class Encoder(nn.Module):
             nn.Conv2d(512, 512, 2, 1, 0), nn.BatchNorm2d(512), nn.ReLU(True))  # 512x1x25   W/4 + 1
 
         self.rnn = nn.Sequential(
+            # 第一个参数 指输入向量大小，这里指的是一个图片每一列的通道数
+            # 第二个参数 是指隐藏层的向量大小
+            # 第三个参数 是指 通过Liner转化的目标大小
             BidirectionalLSTM(512, nh, nh),
             BidirectionalLSTM(nh, nh, nh))
 
@@ -447,9 +450,22 @@ def get_transform (phase = "train"):
         ])
     return transform
 
+ # 1. 根据网络层的不同定义不同的初始化方式
+def weight_init(m):
+    if isinstance(m, nn.Linear):
+        nn.init.xavier_normal_(m.weight)
+        nn.init.constant_(m.bias, 0)
+    # 也可以判断是否为conv2d，使用相应的初始化方式
+    elif isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+     # 是否为批归一化层
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight, 1)
+        nn.init.constant_(m.bias, 0)
 
 # print(label2vec('#'))
 encoder = Encoder(IMG_HEIGHT, 1, 256).to(device)
+encoder.apply(weight_init)
 # decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
 decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
 loss_fn = torch.nn.NLLLoss().to(device)
@@ -494,7 +510,7 @@ def train ():
     for epoch in range(1):
         for iter, (x, y) in enumerate(dataloader):
             # print(y)
-            # print(word_lang.batchlabels2vec(y))
+            # # print(word_lang.batchlabels2vec(y))
             # input('-----------')
             y = word_lang.batchlabels2vec(y)
 
@@ -526,8 +542,7 @@ def train ():
 
                     # print(decode_output.size())
                     decoder_input = y[:, di]
-                    # loss.backward()
-                    # input('-------------')
+
 
             else:
                 for di in range(1,y.shape[1]):  # 每次预测一个字符
@@ -550,6 +565,13 @@ def train ():
             loss.backward()
             encoder_optimizer.step()
             decoder_optimizer.step()
+            print(loss)
+            # print(decode_output)
+            # encoder_optimizer.zero_grad()
+            # decoder_optimizer.zero_grad()
+            # loss.backward()
+            # encoder_optimizer.step()
+            # decoder_optimizer.step()
             cnt = cnt + 1
             if cnt % 10 == 0:
                 losslist.append(total_loss / 10)

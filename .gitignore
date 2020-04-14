@@ -5,3 +5,5 @@ mnist
 *.pkl
 .idea
 *.pt
+myvenv
+checkpoint

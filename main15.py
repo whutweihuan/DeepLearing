@@ -99,6 +99,7 @@ def standard_mytext():
         text = f.read()
         text = text_standardize(text)
         print(text)
+        return text
 
 
 
@@ -125,5 +126,42 @@ def write_dic():
     all_words = [item[0] for item in cnt ]
     np.savetxt('.\mydata\en1.txt',np.array(all_words),fmt="%s")
 
+def write_dic_ch():
+    # 首先处理数据,解析的是文本，统计词的个数，构建词典
+
+    label = []
+    lines = []
+    # with open(DATAPATH + "\\ascii\\lines.txt") as f:
+    with open("mydata\\en0.txt") as f:
+        for i in range(23):
+            f.readline()
+        while True:
+            line = f.readline()
+            if line:
+                line = line.split(' ')
+
+                label.append(line[8].strip('\n').split('|'))
+            else:
+                break;
+
+
+
+    label = [item.lower() for sub in label for item in sub]
+    label = ' '.join(label)
+    print(label)
+
+    cnt = Counter(label)
+
+    print(cnt)
+    print(len(cnt))
+    keys = [k[0] for k in cnt.items()]
+    print(keys)
+    return
+
+    pattern = re.compile(r".*?[\d,#\"'\(\):;\?\!\.\-]+.*?")
+    all_words = [item[0] for item in cnt ]
+    np.savetxt('.\mydata\en1.txt',np.array(all_words),fmt="%s")
+
+
 if __name__ == '__main__':
-    pass
+    write_dic_ch()

@@ -7,3 +7,5 @@ mnist
 *.pt
 myvenv
 checkpoint
+.ipynb_checkpoints
+__pycache__

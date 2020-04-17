@@ -1,9 +1,16 @@
 # -*- coding: utf-8 -*-
 """
  author: weihuan
- date: 2020/4/14  7:21
+ date: 2020/4/16  9:44
 """
-# 正式开始项目,处理标准IAM, 使用ctc进行处理
+# 使用 另一个版本的 attenion iam
+
+# -*- coding: utf-8 -*-
+"""
+ author: weihuan
+ date: 2020/4/14  22:54
+"""
+# 正式开始项目,处理标准IAM, 使用attention进行处理
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,13 +27,17 @@ import re
 import logging
 import logging.config
 from collections import Counter
+import matplotlib.ticker as ticker
+import matplotlib.image as imgplt
 
-logging.config.fileConfig('logging.conf', defaults = {'logfilename': 'log05.txt'})
+logging.config.fileConfig('logging.conf', defaults = {'logfilename': 'log07.txt'})
 
 # create logger
 logger = logging.getLogger('nice')
 
 DATAPATH = "C:\\Users\\weihuan\\Desktop\\IAM"
+SAVE_MODLE_NAME = '02-encoder_attention_iam.pt'
+SAVE_MODLE_NAME2 = '02-decoder_attention_iam.pt'
 
 EOS = '<EOS>'
 SOS = '<SOS>'
@@ -34,11 +45,11 @@ BLK = '<BLK>'
 UNK = '<UNK>'
 
 MAX_LENGTH = 128
-BATCH = 64
+BATCH = 32
 TEACH_FORCING_PROB = 0.5
-N_EPOCH = 100
-LEARNING_RATE = 0.00001
-IMG_WIDTH = 512
+N_EPOCH = 1000
+LEARNING_RATE = 0.0001
+IMG_WIDTH = 280
 IMG_HEIGHT = 32
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -119,12 +130,16 @@ class TrainData(Dataset):
             with open("mydata\\en0.txt") as f:
                 for i in range(23):
                     f.readline()
+                iter = 0
                 while True:
                     line = f.readline()
                     if line:
+                        iter += 1
                         line = line.split(' ')
                         self.path.append(line[0])
                         self.label.append(line[8].strip('\n').lower())
+                        if iter == 11000:
+                            break
                     else:
                         break;
             # self.label = torch.tensor(self.label)
@@ -133,21 +148,11 @@ class TrainData(Dataset):
         path = DATAPATH + "\\lines\\lines\\lines_all\\" + self.path[item] + ".png"
         # img = Image.open(path).convert('RGB').resize((280, 32), Image.BILINEAR)
         img = self.read_img(path)
-        # img = np.asarray(img)
-        # print(torch.from_numpy(img))
-        # print(img)
-        # return
-        # Image.fromarray(img).show()
-        # img.show()
-        label = self.label[item]
-        # label = label.replace('|', ' ')
 
-        # if self.transform is not None:
-        #     # img = self.transform(img)
-        #     img = self.transform(img)
+        label = self.label[item]
+
         if self.target_transform is not None:
             label = self.target_transform(label)
-        # label = word_lang.label2vec(label)
 
         return img, label
 
@@ -247,7 +252,7 @@ class Encoder(nn.Module):
             # 第二个参数 是指隐藏层的向量大小
             # 第三个参数 是指 通过Liner转化的目标大小
             BidirectionalLSTM(512, nh, nh),
-            BidirectionalLSTM(nh, nh, word_lang.size()))
+            BidirectionalLSTM(nh, nh, nh))
 
     def forward (self, input):
         # conv features
@@ -264,22 +269,59 @@ class Encoder(nn.Module):
         return encoder_outputs
 
 
+class Decoder(nn.Module):
+
+    def __init__ (self, hidden_size = 256, output_size = word_lang.size(), dropout_p = 0.1, max_length = 71):
+        super(Decoder, self).__init__()
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        self.dropout_p = dropout_p
+        self.max_length = max_length
+
+        self.embedding = nn.Embedding(self.output_size, self.hidden_size)
+        self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
+        self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
+        self.dropout = nn.Dropout(self.dropout_p)
+        self.gru = nn.GRU(self.hidden_size, self.hidden_size)
+        self.out = nn.Linear(self.hidden_size, self.output_size)
+
+    def forward (self, input, hidden, encoder_outputs):
+        embedded = self.embedding(input)
+        embedded = self.dropout(embedded)
+
+        attn_weights = F.softmax(self.attn(torch.cat((embedded, hidden[0]), 1)), dim = 1)
+        attn_applied = torch.bmm(attn_weights.unsqueeze(1), encoder_outputs.permute(1, 0, 2))
+
+        output = torch.cat((embedded, attn_applied.squeeze(1)), 1)
+        output = self.attn_combine(output).unsqueeze(0)
+
+        output = F.relu(output)
+        output, hidden = self.gru(output, hidden)
+
+        output = F.log_softmax(self.out(output[0]), dim = 1)
+        return output, hidden, attn_weights
+
+    def initHidden (self, batch_size):
+        result = torch.autograd.Variable(torch.zeros(1, batch_size, self.hidden_size, device = device))
+        return result
+
+
 def get_transform (phase = "train"):
-    # transfrom_PIL_list = [
-    #     transforms.RandomAffine((-2, 2), fillcolor = 255),
-    #     transforms.ColorJitter(brightness = 0.5),
-    #     transforms.ColorJitter(contrast = 0.5),
-    #     transforms.ColorJitter(saturation = 0.5),
-    #
-    # ]
-    # transfrom_tensor_list = [
-    #     transforms.RandomErasing(p=0.5, scale=(0.02, 0.1), value=0),
-    # ]
+    transfrom_PIL_list = [
+        transforms.RandomAffine((-2, 2), fillcolor = 255),
+        transforms.ColorJitter(brightness = 0.5),
+        transforms.ColorJitter(contrast = 0.5),
+        transforms.ColorJitter(saturation = 0.5),
+
+    ]
+    transfrom_tensor_list = [
+        transforms.RandomErasing(p=0.5, scale=(0.02, 0.1), value=0),
+    ]
     if phase == "train":
         transform = transforms.Compose([
-            # transforms.RandomApply(transfrom_PIL_list),
+            transforms.RandomApply(transfrom_PIL_list),
             transforms.ToTensor(),
-            # transforms.RandomApply(transfrom_tensor_list),
+            transforms.RandomApply(transfrom_tensor_list),
             transforms.Normalize(
                 mean = [0.5],
                 std = [0.5]),
@@ -308,25 +350,31 @@ def weight_init (m):
         nn.init.constant_(m.bias, 0)
 
 
-# print(label2vec('#'))
 encoder = Encoder(IMG_HEIGHT, 1, 256).to(device)
 encoder.apply(weight_init)
-# decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
-
-loss_fn = torch.nn.CTCLoss(blank = word_lang.word2index(BLK)).to(device)
-# loss_fn = torch.nn.nll_loss().to(device)
+decoder = Decoder().to(device)
+decoder.apply(weight_init)
+ctc_loss = torch.nn.CTCLoss(blank = word_lang.word2index(BLK)).to(device)
 encoder_optimizer = torch.optim.RMSprop(encoder.parameters(), lr = LEARNING_RATE)
+decoder_optimizer = torch.optim.RMSprop(decoder.parameters(), lr = LEARNING_RATE)
+# encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
+# decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
+# encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr = LEARNING_RATE)
+# decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr = LEARNING_RATE)
 
 encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min', factor = 0.8, patience = 3,
                                                                verbose = False)
-td = TrainData(transform = get_transform('train33'))
+td = TrainData(transform = get_transform('train'))
 
 
 def train ():
-    train_dataloader = DataLoader(td, batch_size = BATCH, shuffle = False)
     encoder.train()
+    decoder.train()
+    # encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
+    train_dataloader = DataLoader(td, batch_size = BATCH, shuffle = False, num_workers = 4)
     try:
-        encoder.load_state_dict(torch.load('encoder_ctc_iam01.pt'))
+        encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
+        decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
         print("读取模型成功，开始训练")
     except:
         print("未能读取模型，重新开始训练")
@@ -334,76 +382,102 @@ def train ():
     for epoch in range(N_EPOCH):
         loss_total = .0
         for iter, (x, y) in enumerate(train_dataloader):
-            # transforms.ToPILImage()(x[1]).show()
             label = word_lang.batchlabels2vec(y)
             x, label = x.to(device), label.to(device)
-            encoder_output = encoder(x)  # seq * batch * dic_len
+            encoder_output = encoder(x).to(device)  # seq * batch * dic_len
 
             # CTC loss
-            # 第一个参数是指 编码器输出的结果 seq * batch * dic_len
-            preds_size = torch.full(size = (x.size(0),), fill_value = encoder_output.shape[0], dtype = torch.long).to(
-                device)
-            label_len = Variable(torch.IntTensor(
-                [len(v) - Counter(v.cpu().data.numpy())[word_lang.word2index(BLK)] for v in label]))
+            # preds_size = torch.full(size = (x.size(0),), fill_value = encoder_output.shape[0], dtype = torch.long).to(
+            #     device)
             # label_len = Variable(torch.IntTensor(
-            #     [1 for i in range(len(label))]))
+            #     [len(v) - Counter(v.cpu().data.numpy())[word_lang.word2index(BLK)] for v in label]))
 
-            # print(label)
-            # for item in label_len:
-            #     print(item)
-            # print()
+            # ctc cost and att_cost
+            # ctc_cost = ctc_loss(encoder_output, label, preds_size, label_len)
+            att_cost = 0.0
 
-            # input()
-            # print(word_lang.size())
-            # print(encoder_output.size())
-            # print(label.size())
-            # print(preds_size.size())
-            # print(preds_size)
-            # print(label_len.size())
-            # print(label_len)
+            decoder_input = label[:, 0].to(device, dtype = torch.int64)
+            hidden = decoder.initHidden(len(label))
 
-            loss = loss_fn(encoder_output, label, preds_size, label_len)
+            teachingforce = True if random.random() < TEACH_FORCING_PROB else False
+            attentions = []
+            for di in range(1, label.shape[1]):
+                decoder_output, hidden, attention = decoder(decoder_input, hidden, encoder_output)
+                decoder_input = label[:, di].to(device) if teachingforce else decoder_output.data.topk(1)[1].squeeze()
+                attentions.append(attention)
+
+                att_cost += F.nll_loss(decoder_output, label[:, di])
+
+            loss = att_cost
             encoder.zero_grad()
+            decoder.zero_grad()
             loss.backward()
-            # print(loss.item())
+
             loss_total += loss.item()
             encoder_optimizer.step()
+            decoder_optimizer.step()
             if (iter + 1) % 10 == 0:
                 logger.info("[{}/{}][{}/{}] loss: {}".format(epoch + 1, N_EPOCH, iter + 1, len(train_dataloader),
                                                              loss_total / 10))
                 loss_total = .0
-        torch.save(encoder.state_dict(), 'encoder_ctc_iam01.pt')
+            if (iter + 1) % 100 == 0:
+                torch.save(encoder.state_dict(), SAVE_MODLE_NAME)
+                torch.save(decoder.state_dict(), SAVE_MODLE_NAME2)
+        torch.save(encoder.state_dict(), SAVE_MODLE_NAME)
+        torch.save(decoder.state_dict(), SAVE_MODLE_NAME2)
 
 
-def train_notebook (lr):
-    global encoder_optimizer
-    encoder_optimizer = torch.optim.RMSprop(encoder.parameters(), lr = lr)
-
-    train()
-
-
-def evaluate ():
-    encoder.load_state_dict(torch.load('encoder_ctc_iam01.pt'))
+def evaluate (teacher = False):
+    try:
+        encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
+        decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
+        print("读取模型成功，开始识别")
+    except:
+        print("读取模型失败")
+        return
     encoder.eval()
+    decoder.eval()
     test_dataloader = DataLoader(td, batch_size = 1, shuffle = False)
 
     for iter, (x, y) in enumerate(test_dataloader):
-        # transforms.ToPILImage()(x).show()
 
         label = word_lang.batchlabels2vec(y)
         x, label = x.to(device), label.to(device)
         encoder_output = encoder(x)  # seq * batch * dic_len  => 71 * 1 * 5600
-        _, preds = encoder_output.max(2)  # preds 71 * 1
-        preds = preds.transpose(1, 0).contiguous().view(-1)
-        # for di in range
-        text = [word_lang.index2word(i) for i in preds.cpu().data.numpy()]
-        print(y[0].replace('|', ' '))
-        text = [item for item in text if item != '<SOS>' and item != '<EOS>' and item != '<BLK>']
-        print(''.join(text).replace('|', ' ') + '\n\n\n')
+        decoder_input = label[:, 0].to(device)
+        hidden = decoder.initHidden(len(label))
+
+        pred = []
+        attentions = []
+        for di in range(1, label.shape[1]):
+            decoder_output, hidden, attention = decoder(decoder_input, hidden, encoder_output)
+            # decoder_input = label[:, di].to(device) if teacher == False else decoder_output.data.topk(1)[1].squeeze()
+            # attentions.append(attention)
+            wi = decoder_output.data.topk(1)[1].squeeze(-1)
+            pred.append(word_lang.index2word(wi.item()))
+            decoder_input = wi if teacher == False else label[:, di]
+            attentions.append(attention.squeeze().cpu().data.numpy())
+        attentions = np.array(attentions)
+        # print(np.array(attentions).shape)
+        showAttention(attentions)
+        # print(attentions.shape)
+        print(y[0])
+        print(''.join(pred))
+        print('-' * 80)
+        # print()
+
+        # _, preds = encoder_output.max(2)  # preds 71 * 1
+        # preds = preds.transpose(1, 0).contiguous().view(-1)
+        # # for di in range
+        # text = [word_lang.index2word(i) for i in preds.cpu().data.numpy()]
+        # print(y[0].replace('|', ' '))
+        # text = [item for item in text if item != '<SOS>' and item != '<EOS>' and item != '<BLK>']
+        # print(''.join(text).replace('|', ' ') + '\n\n\n')
         if iter == 100:
             return
 
-def plot_loss(logname,savename,start = 0 ):
+
+def plot_loss (logname, savename, start = 0):
     import numpy as np
     import matplotlib.pyplot as plt
     plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
@@ -449,11 +523,83 @@ def plot_loss(logname,savename,start = 0 ):
     ax.xaxis.label.set_color('red')
     ax.yaxis.label.set_color('red')
 
-    ax.plot(y, label = '英文识别 ctc loss')
+    ax.plot(y, label = '英文识别 attention loss')
     ax.legend(loc = 0, prop = {'size': 30})
     plt.show()
-    fig.savefig('checkpoint\\'+savename)
+    fig.savefig('checkpoint\\' + savename)
+
+
+def showAttention (attentions, input_sentence = 'abc', output_words = 'abc'):
+    # Set up figure with colorbar
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    # cax = ax.matshow(attentions, cmap = 'bone')
+    cax = ax.matshow(attentions)
+    # fig.colorbar(cax)
+
+    # Set up axes
+    # ax.set_xticklabels([''] + input_sentence.split(' ') +
+    #                    ['<EOS>'], rotation = 90)
+    # ax.set_yticklabels([''] + output_words)
+
+    # Show label at every tick
+    # ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    # ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+    plt.show()
+
+
+def testMyImage (path = None):
+    print('-' * 80)
+    if path == None:
+        path = input('输入图片路径: ')
+    image = 0
+    try:
+        image = td.read_img(path)
+        x = imgplt.imread(path)
+        plt.imshow(x)
+    except:
+        print('输入图片路径有误')
+        return
+
+    try:
+        encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
+        decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
+        print("读取模型成功，开始识别")
+    except:
+        print("读取模型失败")
+        return
+    # print(image.shape)
+    image = image.unsqueeze(0).to(device)
+
+    # label = word_lang.batchlabels2vec(y)
+    # x, label = x.to(device), label.to(device)
+    encoder_output = encoder(image).to(device)  # seq * batch * dic_len  => 71 * 1 * 5600
+    decoder_input =  torch.tensor([word_lang.word2index(SOS)] ,device = device)
+    hidden = decoder.initHidden(1)
+
+    pred = []
+    attentions = []
+    for di in range(1, MAX_LENGTH):
+        decoder_output, hidden, attention = decoder(decoder_input, hidden, encoder_output)
+        # decoder_input = label[:, di].to(device) if teacher == False else decoder_output.data.topk(1)[1].squeeze()
+        # attentions.append(attention)
+        wi = decoder_output.data.topk(1)[1].squeeze(-1)
+        pred.append(word_lang.index2word(wi.item()))
+        decoder_input = wi
+        attentions.append(attention.squeeze().cpu().data.numpy())
+        if wi.item() == word_lang.word2index(EOS) or wi.item() == word_lang.word2index(BLK):
+            break
+    attentions = np.array(attentions)
+    # print(np.array(attentions).shape)
+    showAttention(attentions)
+    # print(attentions.shape)
+    # print(y[0])
+    print(''.join(pred))
+    print('-' * 80)
+
 
 if __name__ == '__main__':
     train()
+    # print('hello world!')
     # evaluate()

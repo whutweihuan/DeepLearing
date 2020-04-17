@@ -1,0 +1,4 @@
+DEBUG:root:test
+2020-04-14 10:46:18,802 - root - DEBUG - test
+2020-04-14 10:53:05,193 - root - DEBUG - test
+2020-04-14 11:08:41,595 - simple_example - INFO - test

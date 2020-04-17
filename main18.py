@@ -335,11 +335,34 @@ def train ():
                 loss_total = .0
         torch.save(encoder.state_dict(), 'encoder_ctc.pt')
 
-def train_notebook(lr):
+
+def train_notebook (lr):
     global encoder_optimizer
     encoder_optimizer = torch.optim.RMSprop(encoder.parameters(), lr = lr)
 
     train()
+
+
+def evaluate ():
+    encoder.load_state_dict(torch.load('encoder_ctc.pt'))
+    encoder.eval()
+    test_dataloader = DataLoader(td, batch_size = 1, shuffle = False)
+
+    for iter, (x, y) in enumerate(test_dataloader):
+        label = word_lang.batchlabels2vec(y)
+        x, label = x.to(device), label.to(device)
+        encoder_output = encoder(x)  # seq * batch * dic_len  => 71 * 1 * 5600
+        _, preds = encoder_output.max(2)      # preds 71 * 1
+        preds = preds.transpose(1, 0).contiguous().view(-1)
+        # for di in range
+        text = [word_lang.index2word(i) for i in preds.cpu().data.numpy()]
+        print(y[0])
+        text = [item for item in text if item != '<SOS>' and item != '<EOS>']
+        print(''.join(text) + '\n\n\n')
+        if iter % 100 == 0:
+            input('-----')
+
+
 
 if __name__ == '__main__':
     train()

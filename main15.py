@@ -6,7 +6,7 @@
 # 生成一个字典,将数据保存在 mydata/en.txt 中
 
 import numpy as np
-from collections import Counter,Set
+from collections import Counter, Set
 import re
 
 import re
@@ -28,10 +28,11 @@ LEFT_PUNCTUATION_FILTER = """!%&),.:;<=>?@\\]^_`|}~"""
 RIGHT_PUNCTUATION_FILTER = """"(/<=>@[\\^_`{|~"""
 NORMALIZE_WHITESPACE_REGEX = re.compile(r'[^\S\n]+', re.UNICODE)
 
+
 class Tokenizer():
     """Manager tokens functions and charset/dictionary properties"""
 
-    def __init__(self, chars, max_text_length=128):
+    def __init__ (self, chars, max_text_length = 128):
         self.PAD_TK, self.UNK_TK = "¶", "¤"
         self.chars = (self.PAD_TK + self.UNK_TK + chars)
 
@@ -41,7 +42,7 @@ class Tokenizer():
         self.vocab_size = len(self.chars)
         self.maxlen = max_text_length
 
-    def encode(self, text):
+    def encode (self, text):
         """Encode text to vector"""
 
         text = unicodedata.normalize("NFKD", text).encode("ASCII", "ignore").decode("ASCII")
@@ -55,7 +56,7 @@ class Tokenizer():
 
         return np.asarray(encoded)
 
-    def decode(self, text):
+    def decode (self, text):
         """Decode vector to text"""
 
         decoded = "".join([self.chars[int(x)] for x in text if x > -1])
@@ -64,13 +65,13 @@ class Tokenizer():
 
         return decoded
 
-    def remove_tokens(self, text):
+    def remove_tokens (self, text):
         """Remove tokens (PAD) from text"""
 
         return text.replace(self.PAD_TK, "")
 
 
-def text_standardize(text):
+def text_standardize (text):
     """Organize/add spaces around punctuation marks"""
 
     if text is None:
@@ -92,9 +93,11 @@ def text_standardize(text):
 
     return text
 
+
 DATAPATH = "C:\\Users\\weihuan\\Desktop\\IAM"
 
-def standard_mytext():
+
+def standard_mytext ():
     with open(DATAPATH + "\\ascii\\lines.txt") as f:
         text = f.read()
         text = text_standardize(text)
@@ -102,8 +105,7 @@ def standard_mytext():
         return text
 
 
-
-def write_dic():
+def write_dic ():
     # 首先处理数据,解析的是文本，统计词的个数，构建词典
 
     label = []
@@ -123,10 +125,11 @@ def write_dic():
     cnt = Counter(label).most_common(12000)
 
     pattern = re.compile(r".*?[\d,#\"'\(\):;\?\!\.\-]+.*?")
-    all_words = [item[0] for item in cnt ]
-    np.savetxt('.\mydata\en1.txt',np.array(all_words),fmt="%s")
+    all_words = [item[0] for item in cnt]
+    np.savetxt('.\mydata\en1.txt', np.array(all_words), fmt = "%s")
 
-def write_dic_ch():
+
+def write_dic_ch ():
     # 首先处理数据,解析的是文本，统计词的个数，构建词典
 
     label = []
@@ -144,8 +147,6 @@ def write_dic_ch():
             else:
                 break;
 
-
-
     label = [item.lower() for sub in label for item in sub]
     label = ' '.join(label)
     print(label)
@@ -159,9 +160,29 @@ def write_dic_ch():
     return
 
     pattern = re.compile(r".*?[\d,#\"'\(\):;\?\!\.\-]+.*?")
-    all_words = [item[0] for item in cnt ]
-    np.savetxt('.\mydata\en1.txt',np.array(all_words),fmt="%s")
+    all_words = [item[0] for item in cnt]
+    np.savetxt('.\mydata\en1.txt', np.array(all_words), fmt = "%s")
 
+
+def findblankbug ():
+    pat = re.compile(r'[a-z0-9]+')
+
+
+def handel_hwd2 ():
+    text = ''
+    with open(r'C:\Users\weihuan\Desktop\data\trainlabels.txt', encoding = 'utf-8') as f:
+        for line in f:
+            text += line.split('|')[1].strip('\n')
+    with open(r'C:\Users\weihuan\Desktop\data\testlabels.txt', encoding = 'utf-8') as f:
+        for line in f:
+            text += line.split('|')[1].strip('\n')
+    text += 'abcdefghijklmnopkrstuvwxyz'
+    cnt = Counter(text.lower())
+    words = [w[0] for w in cnt.most_common()]
+    words = ''.join(sorted(words))
+    print(words)
 
 if __name__ == '__main__':
-    write_dic_ch()
+    # write_dic_ch()
+    handel_hwd2()
+    pass

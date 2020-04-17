@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
  author: weihuan
- date: 2020/4/14  7:21
+ date: 2020/4/14  22:54
 """
-# 正式开始项目,处理标准IAM, 使用ctc进行处理
+# 正式开始项目,处理标准IAM, 使用attention进行处理
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,13 +20,16 @@ import re
 import logging
 import logging.config
 from collections import Counter
+import matplotlib.ticker as ticker
 
-logging.config.fileConfig('logging.conf', defaults = {'logfilename': 'log05.txt'})
+logging.config.fileConfig('logging.conf', defaults = {'logfilename': 'log06.txt'})
 
 # create logger
 logger = logging.getLogger('nice')
 
 DATAPATH = "C:\\Users\\weihuan\\Desktop\\IAM"
+SAVE_MODLE_NAME = 'encoder_attention_iam01.pt'
+SAVE_MODLE_NAME2 = 'decoder_attention_iam01.pt'
 
 EOS = '<EOS>'
 SOS = '<SOS>'
@@ -34,10 +37,10 @@ BLK = '<BLK>'
 UNK = '<UNK>'
 
 MAX_LENGTH = 128
-BATCH = 64
+BATCH = 32
 TEACH_FORCING_PROB = 0.5
-N_EPOCH = 100
-LEARNING_RATE = 0.00001
+N_EPOCH = 1000
+LEARNING_RATE = 0.0001
 IMG_WIDTH = 512
 IMG_HEIGHT = 32
 
@@ -247,7 +250,7 @@ class Encoder(nn.Module):
             # 第二个参数 是指隐藏层的向量大小
             # 第三个参数 是指 通过Liner转化的目标大小
             BidirectionalLSTM(512, nh, nh),
-            BidirectionalLSTM(nh, nh, word_lang.size()))
+            BidirectionalLSTM(nh, nh, nh))
 
     def forward (self, input):
         # conv features
@@ -262,6 +265,49 @@ class Encoder(nn.Module):
         encoder_outputs = self.rnn(conv)  # seq * batch * n_classes// 25 × batchsize × 256（隐藏节点个数）
 
         return encoder_outputs
+
+
+class Decoder(nn.Module):
+    def __init__ (self, hiddensize = 256, dic_size = word_lang.size()):
+        super(Decoder, self).__init__()
+        self.hidden_size = hiddensize
+        self.embed = nn.Embedding(dic_size, hiddensize)
+        self.fc1 = nn.Linear(2 * hiddensize, hiddensize)
+        self.lstm = nn.LSTM(hiddensize, hiddensize)
+        self.fc2 = nn.Linear(hiddensize, dic_size)
+        self.fc_att = nn.Linear(hiddensize, 1)
+        self.dropout = nn.Dropout(0.1)
+
+    def forward (self, lstm_hc, encoder_output, factlabel):
+        '''词嵌入'''
+        factlabel = self.embed(factlabel)
+        embed = self.dropout(factlabel)
+
+        ''' 生成alpha权重 '''
+        alpha = encoder_output + lstm_hc[0]  # seq * batch * hidden
+        alpha = alpha.view(-1, alpha.shape[-1])  # seq * batch x hidden
+        attn_weights = self.fc_att(alpha)  # seq * batch x 1
+        attn_weights = torch.tanh(attn_weights)
+        attn_weights = attn_weights.view(-1, 1, encoder_output.shape[1]).permute((2, 1, 0))
+        attn_weights = F.softmax(attn_weights, dim = 2)  # batch x 1 x seq_len
+
+        attn_applied = torch.bmm(  # batch x 1 x hidden_size
+            attn_weights,
+            encoder_output.permute((1, 0, 2)))
+
+        # atten_apply 和  decoder_input 合并输入到 lstm
+        output = torch.cat((embed, attn_applied.squeeze(1)), 1)      # batch  x 2-hidden_size
+        output = self.fc1(output).unsqueeze(0)                       # 1 x batch x hidden_size
+        output = F.relu(output)
+        output, hidden = self.lstm(output, lstm_hc)
+
+        output = F.log_softmax(self.fc2(output[0]), dim = 1)  # 最后输出一个概率
+        return lstm_hc, output, attn_weights
+
+    def initHidden (self, batch_size):
+        h = Variable(torch.zeros(1, batch_size, self.hidden_size, device = device))
+        # c = Variable(torch.zeros(1, batch_size, self.hidden_size, device = device))
+        return h
 
 
 def get_transform (phase = "train"):
@@ -308,14 +354,17 @@ def weight_init (m):
         nn.init.constant_(m.bias, 0)
 
 
-# print(label2vec('#'))
 encoder = Encoder(IMG_HEIGHT, 1, 256).to(device)
 encoder.apply(weight_init)
-# decoder = decoderV2(256, word_lang.size(), dropout_p = 0.1).to(device)
-
-loss_fn = torch.nn.CTCLoss(blank = word_lang.word2index(BLK)).to(device)
-# loss_fn = torch.nn.nll_loss().to(device)
-encoder_optimizer = torch.optim.RMSprop(encoder.parameters(), lr = LEARNING_RATE)
+decoder = Decoder().to(device)
+decoder.apply(weight_init)
+ctc_loss = torch.nn.CTCLoss(blank = word_lang.word2index(BLK)).to(device)
+# encoder_optimizer = torch.optim.RMSprop(encoder.parameters(), lr = LEARNING_RATE)
+# decoder_optimizer = torch.optim.RMSprop(decoder.parameters(), lr = LEARNING_RATE)
+encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
+decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
+# encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr = LEARNING_RATE)
+# decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr = LEARNING_RATE)
 
 encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min', factor = 0.8, patience = 3,
                                                                verbose = False)
@@ -323,10 +372,13 @@ td = TrainData(transform = get_transform('train33'))
 
 
 def train ():
-    train_dataloader = DataLoader(td, batch_size = BATCH, shuffle = False)
     encoder.train()
+    decoder.train()
+    # encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
+    train_dataloader = DataLoader(td, batch_size = BATCH, shuffle = False)
     try:
-        encoder.load_state_dict(torch.load('encoder_ctc_iam01.pt'))
+        encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
+        decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
         print("读取模型成功，开始训练")
     except:
         print("未能读取模型，重新开始训练")
@@ -334,45 +386,49 @@ def train ():
     for epoch in range(N_EPOCH):
         loss_total = .0
         for iter, (x, y) in enumerate(train_dataloader):
-            # transforms.ToPILImage()(x[1]).show()
             label = word_lang.batchlabels2vec(y)
             x, label = x.to(device), label.to(device)
-            encoder_output = encoder(x)  # seq * batch * dic_len
+            encoder_output = encoder(x).to(device)  # seq * batch * dic_len
 
             # CTC loss
-            # 第一个参数是指 编码器输出的结果 seq * batch * dic_len
-            preds_size = torch.full(size = (x.size(0),), fill_value = encoder_output.shape[0], dtype = torch.long).to(
-                device)
-            label_len = Variable(torch.IntTensor(
-                [len(v) - Counter(v.cpu().data.numpy())[word_lang.word2index(BLK)] for v in label]))
+            # preds_size = torch.full(size = (x.size(0),), fill_value = encoder_output.shape[0], dtype = torch.long).to(
+            #     device)
             # label_len = Variable(torch.IntTensor(
-            #     [1 for i in range(len(label))]))
+            #     [len(v) - Counter(v.cpu().data.numpy())[word_lang.word2index(BLK)] for v in label]))
 
-            # print(label)
-            # for item in label_len:
-            #     print(item)
-            # print()
+            # ctc cost and att_cost
+            # ctc_cost = ctc_loss(encoder_output, label, preds_size, label_len)
+            att_cost = 0.0
 
-            # input()
-            # print(word_lang.size())
-            # print(encoder_output.size())
-            # print(label.size())
-            # print(preds_size.size())
-            # print(preds_size)
-            # print(label_len.size())
-            # print(label_len)
+            decoder_input = label[:, 0].to(device)
+            lstm_hc = (decoder.initHidden(len(label)), decoder.initHidden(len(label)))
 
-            loss = loss_fn(encoder_output, label, preds_size, label_len)
+            teachingforce = True if random.random() < TEACH_FORCING_PROB else False
+            attentions = []
+            for di in range(1, label.shape[1]):
+                lstm_hc, decoder_output, attention = decoder(lstm_hc, encoder_output, decoder_input)
+                decoder_input = label[:, di].to(device) if teachingforce else decoder_output.max(1)[1]
+                attentions.append(attention)
+
+                att_cost += F.nll_loss(decoder_output, label[:, di])
+
+            loss = att_cost
             encoder.zero_grad()
+            decoder.zero_grad()
             loss.backward()
-            # print(loss.item())
+
             loss_total += loss.item()
             encoder_optimizer.step()
+            decoder_optimizer.step()
             if (iter + 1) % 10 == 0:
                 logger.info("[{}/{}][{}/{}] loss: {}".format(epoch + 1, N_EPOCH, iter + 1, len(train_dataloader),
                                                              loss_total / 10))
                 loss_total = .0
-        torch.save(encoder.state_dict(), 'encoder_ctc_iam01.pt')
+            if (iter + 1) % 100 == 0:
+                torch.save(encoder.state_dict(), SAVE_MODLE_NAME)
+                torch.save(decoder.state_dict(), SAVE_MODLE_NAME2)
+        torch.save(encoder.state_dict(), SAVE_MODLE_NAME)
+        torch.save(decoder.state_dict(), SAVE_MODLE_NAME2)
 
 
 def train_notebook (lr):
@@ -382,28 +438,55 @@ def train_notebook (lr):
     train()
 
 
-def evaluate ():
-    encoder.load_state_dict(torch.load('encoder_ctc_iam01.pt'))
+def evaluate (teacher = False):
+    try:
+        encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
+        decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
+        print("读取模型成功，开始识别")
+    except:
+        print("读取模型失败")
+        return
     encoder.eval()
+    decoder.eval()
     test_dataloader = DataLoader(td, batch_size = 1, shuffle = False)
 
     for iter, (x, y) in enumerate(test_dataloader):
-        # transforms.ToPILImage()(x).show()
 
         label = word_lang.batchlabels2vec(y)
         x, label = x.to(device), label.to(device)
         encoder_output = encoder(x)  # seq * batch * dic_len  => 71 * 1 * 5600
-        _, preds = encoder_output.max(2)  # preds 71 * 1
-        preds = preds.transpose(1, 0).contiguous().view(-1)
-        # for di in range
-        text = [word_lang.index2word(i) for i in preds.cpu().data.numpy()]
-        print(y[0].replace('|', ' '))
-        text = [item for item in text if item != '<SOS>' and item != '<EOS>' and item != '<BLK>']
-        print(''.join(text).replace('|', ' ') + '\n\n\n')
+        decoder_input = label[:, 0].to(device)
+        lstm_hc = (decoder.initHidden(len(label)), decoder.initHidden(len(label)))
+
+        pred = []
+        attentions = []
+        for di in range(1, label.shape[1]):
+            lstm_hc, decoder_output, attention = decoder(lstm_hc, encoder_output, decoder_input)
+            _, id = decoder_output.max(1)
+            pred.append(word_lang.index2word(id.item()))
+            decoder_input = id if teacher == False else label[:, di]
+            attentions.append(attention.squeeze().cpu().data.numpy())
+        attentions = np.array(attentions)
+        # print(np.array(attentions).shape)
+        showAttention(attentions)
+        # print(attentions.shape)
+        print(y[0])
+        print(''.join(pred))
+        print('-' * 80)
+        # print()
+
+        # _, preds = encoder_output.max(2)  # preds 71 * 1
+        # preds = preds.transpose(1, 0).contiguous().view(-1)
+        # # for di in range
+        # text = [word_lang.index2word(i) for i in preds.cpu().data.numpy()]
+        # print(y[0].replace('|', ' '))
+        # text = [item for item in text if item != '<SOS>' and item != '<EOS>' and item != '<BLK>']
+        # print(''.join(text).replace('|', ' ') + '\n\n\n')
         if iter == 100:
             return
 
-def plot_loss(logname,savename,start = 0 ):
+
+def plot_loss (logname, savename, start = 0):
     import numpy as np
     import matplotlib.pyplot as plt
     plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
@@ -449,11 +532,33 @@ def plot_loss(logname,savename,start = 0 ):
     ax.xaxis.label.set_color('red')
     ax.yaxis.label.set_color('red')
 
-    ax.plot(y, label = '英文识别 ctc loss')
+    ax.plot(y, label = '英文识别 attention loss')
     ax.legend(loc = 0, prop = {'size': 30})
     plt.show()
-    fig.savefig('checkpoint\\'+savename)
+    fig.savefig('checkpoint\\' + savename)
+
+
+def showAttention (attentions, input_sentence = 'abc', output_words = 'abc'):
+    # Set up figure with colorbar
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    # cax = ax.matshow(attentions, cmap = 'bone')
+    cax = ax.matshow(attentions)
+    # fig.colorbar(cax)
+
+    # Set up axes
+    # ax.set_xticklabels([''] + input_sentence.split(' ') +
+    #                    ['<EOS>'], rotation = 90)
+    # ax.set_yticklabels([''] + output_words)
+
+    # Show label at every tick
+    # ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    # ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+    plt.show()
+
 
 if __name__ == '__main__':
     train()
+    # print('hello world!')
     # evaluate()

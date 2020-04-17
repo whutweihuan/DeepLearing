@@ -24,20 +24,20 @@
 a01-000u-00 ok 154 19 408 746 1661 89 A|MOVE|to|stop|Mr.|Gaitskell|from
 a01-000u-01 ok 156 19 395 932 1850 105 nominating|any|more|Labour|life|Peers
 a01-000u-02 ok 157 16 408 1106 1986 105 is|to|be|made|at|a|meeting|of|Labour
-a01-000u-03 err 156 23 430 1290 1883 70 M Ps|tomorrow|.|Mr.|Michael|Foot|has
+a01-000u-03 err 156 23 430 1290 1883 70 M|Ps|tomorrow|.|Mr.|Michael|Foot|has
 a01-000u-04 ok 157 20 395 1474 1830 94 put|down|a|resolution|on|the|subject
 a01-000u-05 err 156 21 379 1643 1854 88 and|he|is|to|be|backed|by|Mr.|Will
-a01-000u-06 ok 159 20 363 1825 2051 87 Griffiths|,|M P|for|Manchester|Exchange|.
+a01-000u-06 ok 159 20 363 1825 2051 87 Griffiths|,|M|P|for|Manchester|Exchange|.
 a01-000x-00 ok 182 30 375 748 1561 148 A|MOVE|to|stop|Mr.|Gaitskell|from|nominating
 a01-000x-01 ok 181 23 382 924 1595 148 any|more|Labour|life|Peers|is|to|be|made|at|a
-a01-000x-02 ok 181 30 386 1110 1637 140 meeting|of|Labour|0M Ps|tomorrow|.|Mr.|Michael
+a01-000x-02 ok 181 30 386 1110 1637 140 meeting|of|Labour|0M|Ps|tomorrow|.|Mr.|Michael
 a01-000x-03 ok 179 22 375 1276 1584 154 Foot|has|put|down|a|resolution|on|the|subject
 a01-000x-04 ok 173 25 397 1458 1647 148 and|he|is|to|be|backed|by|Mr.|Will|Griffiths|,
-a01-000x-05 ok 173 16 393 1635 1082 155 0M P|for|Manchester|Exchange|.
+a01-000x-05 ok 173 16 393 1635 1082 155 0M|P|for|Manchester|Exchange|.
 a01-003-00 ok 176 31 325 896 1807 139 Though|they|may|gather|some|Left-wing|support|,|a
-a01-003-01 ok 176 29 319 1078 1787 126 large|majority|of|Labour|M Ps|are|likely|to
+a01-003-01 ok 176 29 319 1078 1787 126 large|majority|of|Labour|M|Ps|are|likely|to
 a01-003-02 ok 176 29 315 1259 1744 128 turn|down|the|Foot-Griffiths|resolution|.|Mr.
-a01-003-03 ok 176 28 316 1441 1750 70 Foot's|line|will|be|that|as|Labour|M Ps
+a01-003-03 ok 176 28 316 1441 1750 70 Foot's|line|will|be|that|as|Labour|M|Ps
 a01-003-04 ok 161 28 325 1619 1848 113 opposed|the|Government|Bill|which|brought
 a01-003-05 ok 176 29 325 1779 1871 143 life|peers|into|existence|,|they|should|not
 a01-003-06 ok 176 28 326 1980 1873 126 now|put|forward|nominees|.|He|believes
@@ -47,9 +47,9 @@ a01-003-09 err 161 29 313 2509 1975 125 which|would|appear|to|"|prop|up|"|an|out
 a01-003-10 ok 161 11 322 2701 363 66 institution|.
 a01-003u-00 ok 159 18 357 800 1938 106 Though|they|may|gather|some|Left-wing
 a01-003u-01 ok 161 23 366 976 1837 103 support|,|a|large|majority|of|Labour
-a01-003u-02 ok 161 21 356 1162 1908 96 M Ps|are|likely|to|turn|down|the|Foot-
+a01-003u-02 ok 161 21 356 1162 1908 96 M|Ps|are|likely|to|turn|down|the|Foot-
 a01-003u-03 err 162 24 348 1324 1868 96 Griffiths|resolution|.|Mr.|Foot's|line|will
-a01-003u-04 ok 161 13 351 1515 1869 103 be|that|as|Labour|M Ps|opposed|the
+a01-003u-04 ok 161 13 351 1515 1869 103 be|that|as|Labour|M|Ps|opposed|the
 a01-003u-05 ok 163 24 335 1693 2000 104 Government|Bill|which|brought|life|peers
 a01-003u-06 ok 163 20 322 1878 1995 102 into|existence|,|they|should|not|now|put
 a01-003u-07 ok 165 19 364 2045 1956 101 forward|nominees|.|He|believes|that|the
@@ -57,9 +57,9 @@ a01-003u-08 ok 164 19 357 2233 1966 81 House|of|Lords|should|be|abolished|and
 a01-003u-09 ok 165 17 356 2410 1947 91 that|Labour|should|not|take|any|steps
 a01-003u-10 ok 165 24 353 2573 2025 107 which|would|appear|to|"|prop|up|"|an|out-
 a01-003x-00 err 177 32 312 875 1795 167 Though|they|may|gather|some|Left-wing|support|,|a
-a01-003x-01 ok 176 28 307 1046 1831 170 large|majority|of|Labour|0M Ps|are|likely|to|turn
+a01-003x-01 ok 176 28 307 1046 1831 170 large|majority|of|Labour|0M|Ps|are|likely|to|turn
 a01-003x-02 err 177 34 317 1243 1834 130 down|the|Foot-Griffiths|resolution|.|Mr.|Foot's|line
-a01-003x-03 err 169 26 325 1423 1839 128 will|be|that|as|Labour|0M Ps|opposed|the|Govern-
+a01-003x-03 err 169 26 325 1423 1839 128 will|be|that|as|Labour|0M|Ps|opposed|the|Govern-
 a01-003x-04 ok 169 34 306 1590 1875 158 ment|Bill|which|brought|life|peers|into|existence|,|they
 a01-003x-05 ok 176 31 304 1767 1885 144 should|not|now|put|forward|nominees|.|He|believes
 a01-003x-06 ok 176 25 316 1940 1860 138 that|the|House|of|Lords|should|be|abolished|and
@@ -208,7 +208,7 @@ a01-026x-08 ok 182 23 323 2313 1975 166 Central|African|Federation|,|went|to|Che
 a01-026x-09 ok 185 32 326 2493 2022 120 at|the|week-end|for|talks|with|Mr.|Macmillan|.
 a01-030-00 ok 176 12 377 725 1633 78 Northern|Rhodesia|is|a|member|of|the|Federation|.
 a01-030-01 err 176 17 298 907 1800 99 Mr.|Macleod|was|not|at|the|week-end|meeting|.|But|he|told
-a01-030-02 ok 176 20 305 1083 1815 100 M Ps|yesterday|:|"|I|have|no|knowledge|of|secret|negotiations|.|"
+a01-030-02 ok 176 20 305 1083 1815 100 M|Ps|yesterday|:|"|I|have|no|knowledge|of|secret|negotiations|.|"
 a01-030-03 ok 176 15 310 1262 1830 96 He|said|Britain|had|an|obligation|to|consult|the|Federal
 a01-030-04 ok 176 20 328 1431 1733 94 Government|.|But|the|final|decision|remained|with|the|British
 a01-030-05 err 176 14 304 1618 1825 106 Government|.|Mr.|James|Callaghan|,|Labour's|Colonial|spokesman|,
@@ -216,7 +216,7 @@ a01-030-06 ok 182 17 299 1784 1842 121 said|Sir|Roy|had|no|right|to|delay|progre
 a01-030-07 ok 182 10 330 1975 1373 109 refusing|to|sit|round|the|conference|table|.
 a01-030u-00 ok 169 24 342 801 2079 76 Northern|Rhodesia|is|a|member|of|the|Federation|.
 a01-030u-01 ok 169 19 325 997 1754 60 Mr.|Macleod|was|not|at|the|week-end
-a01-030u-02 err 170 22 330 1163 1856 93 meeting|.|But|he|told|M Ps|yesterday|:|"|I
+a01-030u-02 err 170 22 330 1163 1856 93 meeting|.|But|he|told|M|Ps|yesterday|:|"|I
 a01-030u-03 ok 170 23 314 1347 1921 86 have|no|knowledge|of|secret|negotiations|.|"
 a01-030u-04 ok 169 26 323 1522 2029 81 He|said|Britain|had|an|obligation|to|consult
 a01-030u-05 ok 170 15 327 1697 1788 76 the|Federal|Government|.|But|the|final
@@ -479,7 +479,7 @@ a01-087u-01 ok 172 17 387 938 1820 75 led|Labour's|attack|on|the|higher|health
 a01-087u-02 ok 172 23 381 1105 1760 88 charges|.|Mr.|Powell|,|white-faced|and
 a01-087u-03 ok 170 23 374 1288 1651 89 outwardly|unemotional|,|replied|with|a
 a01-087u-04 ok 168 24 351 1474 1923 81 statistical|statement|-|and|ended|by|inciting
-a01-087u-05 ok 168 21 362 1646 1879 84 Labour|M Ps|to|angry|uproar|.|One|dealt
+a01-087u-05 ok 168 21 362 1646 1879 84 Labour|M|Ps|to|angry|uproar|.|One|dealt
 a01-087u-06 ok 172 17 369 1824 1968 68 with|the|human|issue|behind|the|Health
 a01-087u-07 ok 171 21 362 2012 1784 79 Service|;|the|other|tried|to|show|that|the
 a01-087u-08 ok 170 20 373 2185 1788 84 balance-sheet|must|always|come|first|.
@@ -3789,7 +3789,7 @@ c04-160-09 err 169 32 364 2329 1368 158 Twenty|Years|,|"|was|anti-British|.
 c04-165-00 err 184 43 352 845 1710 141 The|film|replaced|"|What|'s|My|Line|?|"|and|"|Be|My
 c04-165-01 err 183 43 327 1048 1736 117 Guest|"|programmes|because|of|an|electricians'
 c04-165-02 ok 183 42 349 1220 1810 108 strike|.|It|showed|Britain|today|through|the|eyes
-c04-165-03 ok 183 43 334 1405 1698 98 of|an|American|T V|reporter|,|Eric|Sevareid|,|and
+c04-165-03 ok 183 43 334 1405 1698 98 of|an|American|T|V|reporter|,|Eric|Sevareid|,|and
 c04-165-04 ok 182 42 325 1590 1668 106 British|personalities|.|Among|them|-|Professor
 c04-165-05 err 184 42 334 1745 1839 140 Dennis|Brogan|,|Shelagh|Delaney|,|and|Alan|Sillitoe|.
 c04-165-06 ok 185 41 331 1942 1723 113 The|film|covered|a|wide|aspect|of|the|British

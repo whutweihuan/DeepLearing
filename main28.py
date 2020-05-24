@@ -1,20 +1,15 @@
 # -*- coding: utf-8 -*-
 """
  author: weihuan
- date: 2020/4/16  9:44
+ date: 2020/5/23  21:09
 """
-# 使用 另一个版本的 attenion iam
 
-# -*- coding: utf-8 -*-
-"""
- author: weihuan
- date: 2020/4/14  22:54
-"""
-# 正式开始项目,处理标准IAM, 使用attention进行处理
+# 正式开始项目,处理标准 HWDB2.0, 使用CRNN进行处理
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
+from IPython.core.display import display
 from torch.autograd import Variable
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
@@ -30,14 +25,15 @@ from collections import Counter
 import matplotlib.ticker as ticker
 import matplotlib.image as imgplt
 
-logging.config.fileConfig('logging.conf', defaults = {'logfilename': 'log07.txt'})
+logging.config.fileConfig('logging.conf', defaults={
+                          'logfilename': 'log09.txt'})
 
 # create logger
 logger = logging.getLogger('nice')
 
-DATAPATH = "C:\\Users\\weihuan\\Desktop\\IAM"
-SAVE_MODLE_NAME = '02-encoder_attention_iam.pt'
-SAVE_MODLE_NAME2 = '02-decoder_attention_iam.pt'
+DATAPATH = "C:\\Users\\weihuan\\Desktop\\data"
+SAVE_MODLE_NAME = '04-encoder_ctc_hwdb.pt'
+SAVE_MODLE_NAME2 = '04-decoder_ctc_hwdb.pt'
 
 EOS = '<EOS>'
 SOS = '<SOS>'
@@ -45,7 +41,7 @@ BLK = '<BLK>'
 UNK = '<UNK>'
 
 MAX_LENGTH = 128
-BATCH = 32
+BATCH = 64
 TEACH_FORCING_PROB = 0.5
 N_EPOCH = 1000
 LEARNING_RATE = 0.0001
@@ -59,7 +55,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class Lang():
-    def __init__ (self):
+    def __init__(self):
         # self.words = np.loadtxt('./mydata/en1.txt', dtype = np.str, encoding = 'utf-8')
         self.w2d = {}
         # self.d2w = {}
@@ -68,25 +64,25 @@ class Lang():
         self.w2d[EOS] = 2
         self.w2d[UNK] = 3
         self.lab2v = {}
-        alpha = ['|', '!', '"', '#', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5',
-                 '6', '7', '8', '9', ':', ';', '?', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-                 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
+        with open(r'mydata/hdwn2_char.txt', encoding='utf-8') as f:
+            alpha = f.read()
+
         for i, word in enumerate(alpha):
             self.w2d[word] = i + 4
         self.d2w = {value: key for key, value in self.w2d.items()}
 
-    def word2index (self, s):
+    def word2index(self, s):
         try:
             return self.w2d[s]
         except:
             return self.w2d[UNK]
 
-    def index2word (self, i):
+    def index2word(self, i):
         return self.d2w[i]
 
     # label such as like
     # a move to stop mr. gaitskell from
-    def label2vec (self, label, lens, real_label = False):
+    def label2vec(self, label, lens, real_label=False):
         # if label in self.lab2v:
         #     return torch.tensor(self.lab2v[label])
         word_list = [item for item in label]
@@ -99,16 +95,16 @@ class Lang():
 
         return torch.tensor(vec)
 
-    def size (self):
+    def size(self):
         return len(self.w2d)
 
-    def batchlabels2vec (self, blabels):
+    def batchlabels2vec(self, blabels):
 
         lens = max(len(s) for s in blabels)
         # print(lens)
         # input("lens----------")
         lens += 2
-        bl = torch.ones(len(blabels), lens, dtype = torch.long)
+        bl = torch.ones(len(blabels), lens, dtype=torch.long)
         for i in range(len(blabels)):
             bl[i, :] = self.label2vec(blabels[i], lens)
         return bl
@@ -118,7 +114,7 @@ word_lang = Lang()
 
 
 class TrainData(Dataset):
-    def __init__ (self, transform = None, target_transform = None):
+    def __init__(self, transform=None, target_transform=None):
         self.path = []  # 图片的路径
         self.label = []  # 图片代表的字符
         self.transform = transform
@@ -126,27 +122,21 @@ class TrainData(Dataset):
 
         # 首先处理数据,解析的是文本，统计词的个数，构建词典
         # with open(DATAPATH + "\\ascii\\lines.txt") as f:
-        with open("mydata\\en0.txt", encoding = 'utf-8') as f:
-            with open("mydata\\en0.txt") as f:
-                for i in range(23):
-                    f.readline()
-                iter = 0
-                while True:
-                    line = f.readline()
-                    if line:
-                        iter += 1
-                        line = line.split(' ')
-                        self.path.append(line[0])
-                        self.label.append(line[8].strip('\n').lower())
-                        if iter == 11000:
-                            break
-                    else:
-                        break;
-            # self.label = torch.tensor(self.label)
+        # with open("mydata\\en0.txt", encoding = 'utf-8') as f:
+        with open(DATAPATH + "\\trainlabels.txt", encoding='utf-8') as f:
+            for line in f:
+                self.path.append(line.split('|')[0])
+                self.label.append(line.split('|')[1].strip('\n').lower())
+            # print(le)
+            # print(self.label)
+            # input()
 
-    def __getitem__ (self, item):
-        path = DATAPATH + "\\lines\\lines\\lines_all\\" + self.path[item] + ".png"
+    def __getitem__(self, item):
+        path = DATAPATH + "\\train\\" + self.path[item]
         # img = Image.open(path).convert('RGB').resize((280, 32), Image.BILINEAR)
+        # print(path)
+        # input()
+
         img = self.read_img(path)
 
         label = self.label[item]
@@ -156,10 +146,10 @@ class TrainData(Dataset):
 
         return img, label
 
-    def __len__ (self):
+    def __len__(self):
         return len(self.path)
 
-    def read_img (self, img_path, desired_size = (IMG_HEIGHT, IMG_WIDTH)):
+    def read_img(self, img_path, desired_size=(IMG_HEIGHT, IMG_WIDTH)):
         img = cv2.imread(img_path, 0)
         img_resize, crop_cc = self.resize_image(img, desired_size)
         # img_resize.show()
@@ -169,23 +159,41 @@ class TrainData(Dataset):
         # return img_tensor
         return img_tensor
 
-    def resize_image (self, image, desired_size):
-        ''' Helper function to resize an image while keeping the aspect ratio.
-        Parameter
-        ---------
+    def OTSU(self, img_gray):
+        max_g = 0
+        suitable_th = 0
+        th_begin = 0
+        th_end = 256
+        for threshold in range(th_begin, th_end):
+            bin_img = img_gray > threshold
+            bin_img_inv = img_gray <= threshold
+            fore_pix = np.sum(bin_img)
+            back_pix = np.sum(bin_img_inv)
+            if 0 == fore_pix:
+                break
+            if 0 == back_pix:
+                continue
 
-        image: np.array
-            The image to be resized.
-        desired_size: (int, int)
-            The (height, width) of the resized image
-        Return
-        ------
-        image: np.array
-            The image of size = desired_size
-        bounding box: (int, int, int, int)
-            (x, y, w, h) in percentages of the resized image of the original
-        '''
+            w0 = float(fore_pix) / img_gray.size
+            u0 = float(np.sum(img_gray * bin_img)) / fore_pix
+            w1 = float(back_pix) / img_gray.size
+            u1 = float(np.sum(img_gray * bin_img_inv)) / back_pix
+            # intra-class variance
+            g = w0 * w1 * (u0 - u1) * (u0 - u1)
+            if g > max_g:
+                max_g = g
+                suitable_th = threshold
+
+        return suitable_th
+
+    def resize_image(self, image, desired_size):
+        # thed = self.OTSU(image)
+        # image[image > thed] = 255
+        # image[image < thed] = 0
+        # image = cv2.medianBlur(image, 5)
+
         size = image.shape[:2]
+        #
         if size[0] > desired_size[0] or size[1] > desired_size[1]:
             ratio_w = float(desired_size[0]) / size[0]
             ratio_h = float(desired_size[1]) / size[1]
@@ -203,21 +211,24 @@ class TrainData(Dataset):
         color = image[0][0]
         if color < 230:
             color = 230
-        image = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value = float(color))
+
+        image = cv2.copyMakeBorder(
+            image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=float(color))
         crop_bb = (left / image.shape[1], top / image.shape[0], (image.shape[1] - right - left) / image.shape[1],
                    (image.shape[0] - bottom - top) / image.shape[0])
-        image[image > 230] = 255
+
+        # image = cv2.medianBlur(image, 5)
         return image, crop_bb
 
 
 class BidirectionalLSTM(nn.Module):
-    def __init__ (self, nIn, nHidden, nOut):
+    def __init__(self, nIn, nHidden, nOut):
         super(BidirectionalLSTM, self).__init__()
         # (input_size,hidden_size,num_layers)
-        self.rnn = nn.LSTM(nIn, nHidden, bidirectional = True)
+        self.rnn = nn.LSTM(nIn, nHidden, bidirectional=True)
         self.embedding = nn.Linear(nHidden * 2, nOut)
 
-    def forward (self, input):
+    def forward(self, input):
         recurrent, _ = self.rnn(input)
         T, b, h = recurrent.size()
         # print(T,b,h)
@@ -230,21 +241,28 @@ class BidirectionalLSTM(nn.Module):
         return output
 
 
+
 class Encoder(nn.Module):
     '''
         CNN+BiLstm做特征提取
     '''
 
-    def __init__ (self, imgH, nc, nh):
+    def __init__(self, imgH, nc, nh):
         super(Encoder, self).__init__()
         assert imgH % 16 == 0, 'imgH has to be a multiple of 16'
         self.cnn = nn.Sequential(
-            nn.Conv2d(nc, 64, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 64x16x50   W/2
-            nn.Conv2d(64, 128, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(2, 2),  # 128x8x25  W/4
-            nn.Conv2d(128, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU(True),  # 256x8x25
-            nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d((2, 2), (2, 1), (0, 1)),  # 256x4x25  W/4 + 1
-            nn.Conv2d(256, 512, 3, 1, 1), nn.BatchNorm2d(512), nn.ReLU(True),  # 512x4x25
-            nn.Conv2d(512, 512, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d((2, 2), (2, 1), (0, 1)),  # 512x2x25  W/4 + 2
+                nn.Conv2d(nc, 64, 3, 1, 1), nn.ReLU(
+                True), nn.MaxPool2d(2,2),  # 64x16x50   W/2
+            nn.Conv2d(64, 128, 3, 1, 1), nn.ReLU(
+                True), nn.MaxPool2d(2, 2),  # 128x8x25  W/4
+            nn.Conv2d(128, 256, 3, 1, 1), nn.BatchNorm2d(
+                256), nn.ReLU(True),  # 256x8x25
+            nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(
+                (2, 2), (2, 1), (0, 1)),  # 256x4x25  W/4 + 1
+            nn.Conv2d(256, 512, 3, 1, 1), nn.BatchNorm2d(
+                512), nn.ReLU(True),  # 512x4x25
+            nn.Conv2d(512, 512, 3, 1, 1), nn.ReLU(True), nn.MaxPool2d(
+                (2, 2), (2, 1), (0, 1)),  # 512x2x25  W/4 + 2
             nn.Conv2d(512, 512, 2, 1, 0), nn.BatchNorm2d(512), nn.ReLU(True))  # 512x1x25   W/4 + 1
 
         self.rnn = nn.Sequential(
@@ -252,9 +270,9 @@ class Encoder(nn.Module):
             # 第二个参数 是指隐藏层的向量大小
             # 第三个参数 是指 通过Liner转化的目标大小
             BidirectionalLSTM(512, nh, nh),
-            BidirectionalLSTM(nh, nh, nh))
+            BidirectionalLSTM(nh, nh, word_lang.size()))
 
-    def forward (self, input):
+    def forward(self, input):
         # conv features
         conv = self.cnn(input)
         b, c, h, w = conv.size()
@@ -262,16 +280,18 @@ class Encoder(nn.Module):
         # input('-----------2-----------')
         assert h == 1, "the height of conv must be 1"
         conv = conv.squeeze(2)
-        conv = conv.permute(2, 0, 1)  # [width, batch, channel]  ==> [WIDTH / 4 + 1, batch, 512]
+        # [width, batch, channel]  ==> [WIDTH / 4 + 1, batch, 512]
+        conv = conv.permute(2, 0, 1)
         # rnn features calculate
-        encoder_outputs = self.rnn(conv)  # seq * batch * n_classes// 25 × batchsize × 256（隐藏节点个数）
+        # seq * batch * n_classes// 25 × batchsize × 256（隐藏节点个数）
+        encoder_outputs = self.rnn(conv)
 
         return encoder_outputs
 
 
 class Decoder(nn.Module):
 
-    def __init__ (self, hidden_size = 256, output_size = word_lang.size(), dropout_p = 0.1, max_length = 71):
+    def __init__(self, hidden_size=256, output_size=word_lang.size(), dropout_p=0.1, max_length=71):
         super(Decoder, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -285,12 +305,14 @@ class Decoder(nn.Module):
         self.gru = nn.GRU(self.hidden_size, self.hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
-    def forward (self, input, hidden, encoder_outputs):
+    def forward(self, input, hidden, encoder_outputs):
         embedded = self.embedding(input)
         embedded = self.dropout(embedded)
 
-        attn_weights = F.softmax(self.attn(torch.cat((embedded, hidden[0]), 1)), dim = 1)
-        attn_applied = torch.bmm(attn_weights.unsqueeze(1), encoder_outputs.permute(1, 0, 2))
+        attn_weights = F.softmax(
+            self.attn(torch.cat((embedded, hidden[0]), 1)), dim=1)
+        attn_applied = torch.bmm(attn_weights.unsqueeze(
+            1), encoder_outputs.permute(1, 0, 2))
 
         output = torch.cat((embedded, attn_applied.squeeze(1)), 1)
         output = self.attn_combine(output).unsqueeze(0)
@@ -298,20 +320,21 @@ class Decoder(nn.Module):
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
 
-        output = F.log_softmax(self.out(output[0]), dim = 1)
+        output = F.log_softmax(self.out(output[0]), dim=1,dtype=torch.float64)
         return output, hidden, attn_weights
 
-    def initHidden (self, batch_size):
-        result = torch.autograd.Variable(torch.zeros(1, batch_size, self.hidden_size, device = device))
+    def initHidden(self, batch_size):
+        result = torch.autograd.Variable(torch.zeros(
+            1, batch_size, self.hidden_size, device=device))
         return result
 
 
-def get_transform (phase = "train"):
+def get_transform(phase="train"):
     transfrom_PIL_list = [
-        transforms.RandomAffine((-2, 2), fillcolor = 255),
-        transforms.ColorJitter(brightness = 0.5),
-        transforms.ColorJitter(contrast = 0.5),
-        transforms.ColorJitter(saturation = 0.5),
+        transforms.RandomAffine((-2, 2), fillcolor=255),
+        transforms.ColorJitter(brightness=0.5),
+        transforms.ColorJitter(contrast=0.5),
+        transforms.ColorJitter(saturation=0.5),
 
     ]
     transfrom_tensor_list = [
@@ -323,27 +346,27 @@ def get_transform (phase = "train"):
             transforms.ToTensor(),
             transforms.RandomApply(transfrom_tensor_list),
             transforms.Normalize(
-                mean = [0.5],
-                std = [0.5]),
+                mean=[0.5],
+                std=[0.5]),
         ])
     else:
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(
-                mean = [0.5],
-                std = [0.5]),
+                mean=[0.5],
+                std=[0.5]),
         ])
     return transform
 
 
 # https://blog.csdn.net/dss_dssssd/article/details/83990511
-def weight_init (m):
+def weight_init(m):
     if isinstance(m, nn.Linear):
         nn.init.xavier_normal_(m.weight)
         nn.init.constant_(m.bias, 0)
     # 也可以判断是否为conv2d，使用相应的初始化方式
     elif isinstance(m, nn.Conv2d):
-        nn.init.kaiming_normal_(m.weight, mode = 'fan_out', nonlinearity = 'relu')
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
     # 是否为批归一化层
     elif isinstance(m, nn.BatchNorm2d):
         nn.init.constant_(m.weight, 1)
@@ -354,27 +377,32 @@ encoder = Encoder(IMG_HEIGHT, 1, 256).to(device)
 encoder.apply(weight_init)
 decoder = Decoder().to(device)
 decoder.apply(weight_init)
-ctc_loss = torch.nn.CTCLoss(blank = word_lang.word2index(BLK)).to(device)
-encoder_optimizer = torch.optim.RMSprop(encoder.parameters(), lr = LEARNING_RATE)
-decoder_optimizer = torch.optim.RMSprop(decoder.parameters(), lr = LEARNING_RATE)
-# encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr = LEARNING_RATE)
-# decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr = LEARNING_RATE)
+ctc_loss = torch.nn.CTCLoss(blank=word_lang.word2index(BLK)).to(device)
+# encoder_optimizer = torch.optim.RMSprop(encoder.parameters(), lr = LEARNING_RATE)
+# decoder_optimizer = torch.optim.RMSprop(decoder.parameters(), lr = LEARNING_RATE)
+encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=LEARNING_RATE)
+decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=LEARNING_RATE)
 # encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr = LEARNING_RATE)
 # decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr = LEARNING_RATE)
 
-encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min', factor = 0.8, patience = 3,
-                                                               verbose = False)
-td = TrainData(transform = get_transform('train'))
+# loss_fn = torch.nn.CTCLoss(blank = word_lang.word2index(BLK)).to(device)
+
+encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min', factor=0.8, patience=3,
+                                                               verbose=False)
+td = TrainData(transform=get_transform('train'))
+td2 = TrainData(transform=get_transform('test'))
 
 
-def train ():
+def train():
     encoder.train()
-    decoder.train()
+    # decoder.train()
     # encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
-    train_dataloader = DataLoader(td, batch_size = BATCH, shuffle = False, num_workers = 4)
+    train_dataloader = DataLoader(
+        # td, batch_size=BATCH, shuffle=True, num_workers=4)
+        td, batch_size=BATCH, shuffle=True)
     try:
         encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
-        decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
+        # decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
         print("读取模型成功，开始训练")
     except:
         print("未能读取模型，重新开始训练")
@@ -382,62 +410,72 @@ def train ():
     for epoch in range(N_EPOCH):
         loss_total = .0
         for iter, (x, y) in enumerate(train_dataloader):
+            # print(x.shape)
+            # input()
+            # torchvision.transforms.ToPILImage()(x[0]).show()
+            # input()
+
             label = word_lang.batchlabels2vec(y)
             x, label = x.to(device), label.to(device)
             encoder_output = encoder(x).to(device)  # seq * batch * dic_len
 
             # CTC loss
-            # preds_size = torch.full(size = (x.size(0),), fill_value = encoder_output.shape[0], dtype = torch.long).to(
-            #     device)
-            # label_len = Variable(torch.IntTensor(
-            #     [len(v) - Counter(v.cpu().data.numpy())[word_lang.word2index(BLK)] for v in label]))
+            preds_size = torch.full(size = (x.size(0),), fill_value = encoder_output.shape[0], dtype = torch.long).to(
+                device)
+            label_len = Variable(torch.IntTensor(
+                [len(v) - Counter(v.cpu().data.numpy())[word_lang.word2index(BLK)] for v in label]))
 
             # ctc cost and att_cost
-            # ctc_cost = ctc_loss(encoder_output, label, preds_size, label_len)
-            att_cost = 0.0
+            ctc_cost = ctc_loss(encoder_output, label, preds_size, label_len)
 
-            decoder_input = label[:, 0].to(device, dtype = torch.int64)
-            hidden = decoder.initHidden(len(label))
+            # attention loss
+            # att_cost = 0.0
 
-            teachingforce = True if random.random() < TEACH_FORCING_PROB else False
-            attentions = []
-            for di in range(1, label.shape[1]):
-                decoder_output, hidden, attention = decoder(decoder_input, hidden, encoder_output)
-                decoder_input = label[:, di].to(device) if teachingforce else decoder_output.data.topk(1)[1].squeeze()
-                attentions.append(attention)
+            # decoder_input = label[:, 0].to(device, dtype=torch.int64)
+            # hidden = decoder.initHidden(len(label))
+            #
+            # teachingforce = True if random.random() < TEACH_FORCING_PROB else False
+            # attentions = []
+            # for di in range(1, label.shape[1]):
+            #     decoder_output, hidden, attention = decoder(
+            #         decoder_input, hidden, encoder_output)
+            #     decoder_input = label[:, di].to(
+            #         device) if teachingforce else decoder_output.data.topk(1)[1].squeeze()
+            #     attentions.append(attention)
+            #
+            #     att_cost += F.nll_loss(decoder_output, label[:, di])
 
-                att_cost += F.nll_loss(decoder_output, label[:, di])
-
-            loss = att_cost
+            loss = ctc_cost
             encoder.zero_grad()
-            decoder.zero_grad()
+            # decoder.zero_grad()
             loss.backward()
 
             loss_total += loss.item()
             encoder_optimizer.step()
-            decoder_optimizer.step()
+            # decoder_optimizer.step()
             if (iter + 1) % 10 == 0:
                 logger.info("[{}/{}][{}/{}] loss: {}".format(epoch + 1, N_EPOCH, iter + 1, len(train_dataloader),
                                                              loss_total / 10))
                 loss_total = .0
             if (iter + 1) % 100 == 0:
                 torch.save(encoder.state_dict(), SAVE_MODLE_NAME)
-                torch.save(decoder.state_dict(), SAVE_MODLE_NAME2)
+                # torch.save(decoder.state_dict(), SAVE_MODLE_NAME2)
         torch.save(encoder.state_dict(), SAVE_MODLE_NAME)
-        torch.save(decoder.state_dict(), SAVE_MODLE_NAME2)
+        # torch.save(decoder.state_dict(), SAVE_MODLE_NAME2)
 
 
-def evaluate (teacher = False):
+def evaluate(teacher=False):
     try:
         encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
         decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
         print("读取模型成功，开始识别")
-    except:
+    except Exception as e:
         print("读取模型失败")
+        print(e)
         return
     encoder.eval()
     decoder.eval()
-    test_dataloader = DataLoader(td, batch_size = 1, shuffle = False)
+    test_dataloader = DataLoader(td2, batch_size=1, shuffle=True)
 
     for iter, (x, y) in enumerate(test_dataloader):
 
@@ -450,7 +488,8 @@ def evaluate (teacher = False):
         pred = []
         attentions = []
         for di in range(1, label.shape[1]):
-            decoder_output, hidden, attention = decoder(decoder_input, hidden, encoder_output)
+            decoder_output, hidden, attention = decoder(
+                decoder_input, hidden, encoder_output)
             # decoder_input = label[:, di].to(device) if teacher == False else decoder_output.data.topk(1)[1].squeeze()
             # attentions.append(attention)
             wi = decoder_output.data.topk(1)[1].squeeze(-1)
@@ -459,7 +498,7 @@ def evaluate (teacher = False):
             attentions.append(attention.squeeze().cpu().data.numpy())
         attentions = np.array(attentions)
         # print(np.array(attentions).shape)
-        showAttention(attentions)
+        # showAttention(attentions)
         # print(attentions.shape)
         print(y[0])
         print(''.join(pred))
@@ -477,7 +516,7 @@ def evaluate (teacher = False):
             return
 
 
-def plot_loss (logname, savename, start = 0):
+def plot_loss(logname, savename, start=0):
     import numpy as np
     import matplotlib.pyplot as plt
     plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
@@ -497,10 +536,10 @@ def plot_loss (logname, savename, start = 0):
 
     # print(y)
     # plt.figure(figsize=(10 ,10))
-    fig, ax = plt.subplots(1, 1, figsize = (30, 15))
+    fig, ax = plt.subplots(1, 1, figsize=(30, 15))
 
-    plt.xticks(fontsize = 30)
-    plt.yticks(fontsize = 30)
+    plt.xticks(fontsize=30)
+    plt.yticks(fontsize=30)
     # 设置轴的位置
     # ax.spines['left'].set_position('center')
     # 设置轴的颜色
@@ -512,31 +551,29 @@ def plot_loss (logname, savename, start = 0):
     # print(t)
     # plt.axis['xzero'].set_visible(True)
 
-    ax.tick_params(axis = 'x', colors = 'r')
-    ax.tick_params(axis = 'y', colors = 'r')
+    ax.tick_params(axis='x', colors='r')
+    ax.tick_params(axis='y', colors='r')
 
     ax.spines['left'].set_color('red')
     ax.spines['bottom'].set_color('red')
 
-    ax.set_xlabel('iter', fontsize = 30)
-    ax.set_ylabel('loss', fontsize = 30)
+    ax.set_xlabel('iter', fontsize=30)
+    ax.set_ylabel('loss', fontsize=30)
     ax.xaxis.label.set_color('red')
     ax.yaxis.label.set_color('red')
 
-    ax.plot(y, label = '英文识别 attention loss')
-    ax.legend(loc = 0, prop = {'size': 30})
+    ax.plot(y, label='hwdb 中文识别 ctc loss')
+    ax.legend(loc=0, prop={'size': 30})
     plt.show()
     fig.savefig('checkpoint\\' + savename)
 
 
-def showAttention (attentions, input_sentence = 'abc', output_words = 'abc'):
+def showAttention(attentions, input_sentence='abc', output_words='abc'):
     # Set up figure with colorbar
-    fig = plt.figure()
+    fig = plt.figure(figsize=(12, len(attentions) / 72 * 40))
     ax = fig.add_subplot(111)
     # cax = ax.matshow(attentions, cmap = 'bone')
-    # cax = ax.matshow(attentions, cmap = 'gray')
-    cax = ax.matshow(attentions, cmap = plt.cm.gray_r)
-    # cax = ax.matshow(attentions)
+    cax = ax.matshow(attentions)
     # fig.colorbar(cax)
 
     # Set up axes
@@ -550,16 +587,24 @@ def showAttention (attentions, input_sentence = 'abc', output_words = 'abc'):
 
     plt.show()
 
+import  Levenshtein
+# print(Levenshtein.distance("今天中午吃饭了吗","今天中午刚吃了海鲜"))
 
-def testMyImage (path = None):
-    print('-' * 80)
+def testMyImage(path=None,label=None):
+    # print('-' * 80)
     if path == None:
         path = input('输入图片路径: ')
     image = 0
     try:
-        image = td.read_img(path)
-        x = imgplt.imread(path)
-        plt.imshow(x)
+        image = td2.read_img(path)
+        img = cv2.imread(path, 0)
+        img_resize, crop_cc = td2.resize_image(
+            img, desired_size=(IMG_HEIGHT, IMG_WIDTH))
+        # display(Image.fromarray(img_resize).resize((720, 60)))
+
+        # x = imgplt.imread(path)
+        # image = get_transform('test')(image)
+        # plt.imshow(x)
     except:
         print('输入图片路径有误')
         return
@@ -567,7 +612,7 @@ def testMyImage (path = None):
     try:
         encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
         decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
-        print("读取模型成功，开始识别")
+        # print("读取模型成功，开始识别")
     except:
         print("读取模型失败")
         return
@@ -576,14 +621,16 @@ def testMyImage (path = None):
 
     # label = word_lang.batchlabels2vec(y)
     # x, label = x.to(device), label.to(device)
-    encoder_output = encoder(image).to(device)  # seq * batch * dic_len  => 71 * 1 * 5600
-    decoder_input =  torch.tensor([word_lang.word2index(SOS)] ,device = device)
+    # seq * batch * dic_len  => 71 * 1 * 5600
+    encoder_output = encoder(image).to(device)
+    decoder_input = torch.tensor([word_lang.word2index(SOS)], device=device)
     hidden = decoder.initHidden(1)
 
     pred = []
     attentions = []
     for di in range(1, MAX_LENGTH):
-        decoder_output, hidden, attention = decoder(decoder_input, hidden, encoder_output)
+        decoder_output, hidden, attention = decoder(
+            decoder_input, hidden, encoder_output)
         # decoder_input = label[:, di].to(device) if teacher == False else decoder_output.data.topk(1)[1].squeeze()
         # attentions.append(attention)
         wi = decoder_output.data.topk(1)[1].squeeze(-1)
@@ -594,15 +641,31 @@ def testMyImage (path = None):
             break
     attentions = np.array(attentions)
     # print(np.array(attentions).shape)
-    showAttention(attentions)
+    # showAttention(attentions)
     # print(attentions.shape)
     # print(y[0])
-    print(''.join(pred))
-    print('-' * 80)
+    # print(''.join(pred))
+    pred=pred[:-1]
+    if label != None:
+        temp = 1- Levenshtein.distance(''.join(pred),label)/len(label)
+        if(temp>0.5):
+            print(temp)
+        # print(''.join(pred))
+        # print(label)
+        # print('-' * 80)
+        # print()
+    # return ''.join(pred)
+    # print('-' * 80)
 
+# def test_image_help(path)
 
 if __name__ == '__main__':
-    # train()
+    # evaluate()
+    # testMyImage()
+    train()
     # print('hello world!')
     # evaluate()
+    # print('123')
+    # a = word_lang.label2vec("浔阳地僻无音乐,终岁不闻丝竹声。",30)
+    # print(a)
     pass

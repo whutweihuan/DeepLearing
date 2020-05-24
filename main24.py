@@ -13,25 +13,26 @@ from PIL import  Image
 
 # 本程序将 hwdb2.0 图片转化为 png 格式图片和标签
 
-gen_test_data = False  # 如果产生测试图片写 True, 训练集写 False
+gen_test_data = True  # 如果产生测试图片写 True, 训练集写 False
 
-datapath = r'C:\Users\weihuan\Desktop\data'
-TRAIN_SOURCE_PATH = os.path.join(datapath,'HWDB2.0Train')
+datapath = r'C:\Users\weihuan\Desktop\data2'
+TRAIN_SOURCE_PATH = os.path.join(datapath,'HWDB2.2Train')
 TRAIN_SAVE_PATH = os.path.join(datapath,'train')
 
-TEST_SOURCE_PATH = os.path.join(datapath,'HWDB2.0Test')
+TEST_SOURCE_PATH = os.path.join(datapath,'HWDB2.2Test')
 TEST_SAVE_PATH = os.path.join(datapath,'test')
 
 bad_image = False
 
-step = 0
+step = 40000
 iter = 0
 
-labelwriter = open(os.path.join(datapath,'testlabels.txt'),'w+',encoding = 'utf-8')
+
 img_root = TEST_SOURCE_PATH if gen_test_data else TRAIN_SOURCE_PATH
 label_txt = 'testlabels.txt' if gen_test_data else 'trainlabels.txt'
 file_num = len(os.listdir(img_root))
 savepath = TEST_SAVE_PATH if gen_test_data else TRAIN_SAVE_PATH
+labelwriter = open(os.path.join(datapath,label_txt),'w+',encoding = 'utf-8')
 
 for fname in os.listdir(img_root):
     iter = iter + 1

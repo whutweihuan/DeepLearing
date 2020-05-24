@@ -68,9 +68,13 @@ def resize_image (image, desired_size ):
     image[image > 230] = 255
     return image, crop_bb
 
+
+# img = read_img('mydata/images/000000001.png')
+# img.show()
+
 for i in range(N_IMAGE):
 
-    path = 'mydata/a01-000u-0'+ str(i) +'.png'
+    path = 'mydata/images/a01-000u-0'+ str(i) +'.png'
     img = read_img(path)
     # print(img)
     img.show()

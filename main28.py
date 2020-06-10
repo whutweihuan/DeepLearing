@@ -4,7 +4,7 @@
  date: 2020/5/23  21:09
 """
 
-# 正式开始项目,处理标准 HWDB2.0, 使用CRNN进行处理
+# 正式开始项目,处理标准 HWDB2.0, 使用CRNN进行处理, 未成功
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,7 +44,7 @@ MAX_LENGTH = 128
 BATCH = 64
 TEACH_FORCING_PROB = 0.5
 N_EPOCH = 1000
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.001
 IMG_WIDTH = 280
 IMG_HEIGHT = 32
 
@@ -381,7 +381,7 @@ ctc_loss = torch.nn.CTCLoss(blank=word_lang.word2index(BLK)).to(device)
 # encoder_optimizer = torch.optim.RMSprop(encoder.parameters(), lr = LEARNING_RATE)
 # decoder_optimizer = torch.optim.RMSprop(decoder.parameters(), lr = LEARNING_RATE)
 encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=LEARNING_RATE)
-decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=LEARNING_RATE)
+# decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=LEARNING_RATE)
 # encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr = LEARNING_RATE)
 # decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr = LEARNING_RATE)
 
@@ -389,7 +389,7 @@ decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=LEARNING_RATE)
 
 encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min', factor=0.8, patience=3,
                                                                verbose=False)
-td = TrainData(transform=get_transform('train'))
+td = TrainData(transform=get_transform('test'))
 td2 = TrainData(transform=get_transform('test'))
 
 
@@ -413,6 +413,7 @@ def train():
             # print(x.shape)
             # input()
             # torchvision.transforms.ToPILImage()(x[0]).show()
+            # print(y[0])
             # input()
 
             label = word_lang.batchlabels2vec(y)
@@ -422,8 +423,19 @@ def train():
             # CTC loss
             preds_size = torch.full(size = (x.size(0),), fill_value = encoder_output.shape[0], dtype = torch.long).to(
                 device)
+            # print(preds_size.shape)
+            # print(preds_size)
+            # input()
+
             label_len = Variable(torch.IntTensor(
                 [len(v) - Counter(v.cpu().data.numpy())[word_lang.word2index(BLK)] for v in label]))
+            # print(label_len.shape)
+            # print(label_len)
+            # input()
+
+            # print([word_lang.index2word(id) for id in label[3].data.cpu().numpy()])
+
+            # input()
 
             # ctc cost and att_cost
             ctc_cost = ctc_loss(encoder_output, label, preds_size, label_len)
@@ -591,10 +603,12 @@ import  Levenshtein
 # print(Levenshtein.distance("今天中午吃饭了吗","今天中午刚吃了海鲜"))
 
 def testMyImage(path=None,label=None):
+    encoder.eval()
     # print('-' * 80)
     if path == None:
         path = input('输入图片路径: ')
     image = 0
+    # print('111')
     try:
         image = td2.read_img(path)
         img = cv2.imread(path, 0)
@@ -605,16 +619,18 @@ def testMyImage(path=None,label=None):
         # x = imgplt.imread(path)
         # image = get_transform('test')(image)
         # plt.imshow(x)
+        # print('1111')
     except:
         print('输入图片路径有误')
         return
 
     try:
         encoder.load_state_dict(torch.load(SAVE_MODLE_NAME))
-        decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
+        # decoder.load_state_dict(torch.load(SAVE_MODLE_NAME2))
         # print("读取模型成功，开始识别")
-    except:
+    except Exception as e:
         print("读取模型失败")
+        # print(e)
         return
     # print(image.shape)
     image = image.unsqueeze(0).to(device)
@@ -623,33 +639,48 @@ def testMyImage(path=None,label=None):
     # x, label = x.to(device), label.to(device)
     # seq * batch * dic_len  => 71 * 1 * 5600
     encoder_output = encoder(image).to(device)
-    decoder_input = torch.tensor([word_lang.word2index(SOS)], device=device)
-    hidden = decoder.initHidden(1)
+    # decoder_input = torch.tensor([word_lang.word2index(SOS)], device=device)
+    # hidden = decoder.initHidden(1)
 
-    pred = []
-    attentions = []
-    for di in range(1, MAX_LENGTH):
-        decoder_output, hidden, attention = decoder(
-            decoder_input, hidden, encoder_output)
-        # decoder_input = label[:, di].to(device) if teacher == False else decoder_output.data.topk(1)[1].squeeze()
-        # attentions.append(attention)
-        wi = decoder_output.data.topk(1)[1].squeeze(-1)
-        pred.append(word_lang.index2word(wi.item()))
-        decoder_input = wi
-        attentions.append(attention.squeeze().cpu().data.numpy())
-        if wi.item() == word_lang.word2index(EOS) or wi.item() == word_lang.word2index(BLK):
-            break
-    attentions = np.array(attentions)
+    _, preds = encoder_output.max(2)  # preds 71 * 1
+    preds = preds.transpose(1, 0).contiguous().view(-1)
+    print(preds)
+
+
+    # for di in range
+    text = [word_lang.index2word(i) for i in preds.cpu().data.numpy()]
+    # print(y[0].replace('|', ' '))
+    text = [item for item in text if item != '<SOS>' and item != '<EOS>' and item != '<BLK>']
+    # print(''.join(text).replace('|', ' ') + '\n\n\n')
+
+
+    pred = ''.join(text)
+    # print(pred)
+    print(label)
+    print('-'* 80 )
+    # attentions = []
+    # for di in range(1, MAX_LENGTH):
+    #     decoder_output, hidden, attention = decoder(
+    #         decoder_input, hidden, encoder_output)
+    #     # decoder_input = label[:, di].to(device) if teacher == False else decoder_output.data.topk(1)[1].squeeze()
+    #     # attentions.append(attention)
+    #     wi = decoder_output.data.topk(1)[1].squeeze(-1)
+    #     pred.append(word_lang.index2word(wi.item()))
+    #     decoder_input = wi
+    #     attentions.append(attention.squeeze().cpu().data.numpy())
+    #     if wi.item() == word_lang.word2index(EOS) or wi.item() == word_lang.word2index(BLK):
+    #         break
+    # attentions = np.array(attentions)
     # print(np.array(attentions).shape)
     # showAttention(attentions)
     # print(attentions.shape)
     # print(y[0])
     # print(''.join(pred))
-    pred=pred[:-1]
-    if label != None:
-        temp = 1- Levenshtein.distance(''.join(pred),label)/len(label)
-        if(temp>0.5):
-            print(temp)
+    # pred=pred[:-1]
+    # if label != None:
+    #     temp = 1- Levenshtein.distance(''.join(pred),label)/len(label)
+    #     if(temp>0.5):
+    #         print(temp)
         # print(''.join(pred))
         # print(label)
         # print('-' * 80)

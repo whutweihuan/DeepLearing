@@ -656,10 +656,10 @@ def testMyImage(path=None,label=None):
 if __name__ == '__main__':
     # evaluate()
     # testMyImage()
-    # train()
+    train()
     # print('hello world!')
     # evaluate()
-    print('123')
-    a = word_lang.label2vec("浔阳地僻无音乐,终岁不闻丝竹声。",30)
-    print(a)
-    pass
+    # print('123')
+    # a = word_lang.label2vec("浔阳地僻无音乐,终岁不闻丝竹声。",30)
+    # print(a)
+    # pass
